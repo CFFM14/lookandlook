@@ -222,18 +222,18 @@
         }
         var isBlue = state === 'hintFlash';
         var mainC = isBlue ? '#4DA6FF' : '#FFB300';
-        var lineW = Math.max(2.5, size * 0.045);
+        var lineW = Math.max(2, size * 0.035);
         var gx = v.x - size * pulse / 2, gy = v.y - size * pulse / 2;
         var gs = size * pulse;
-        var corner = Math.max(6, gs * 0.14); // 角标长度（缩小）
+        var corner = Math.max(5, gs * 0.09); // 角标长度（更小）
 
         ctx.save();
         ctx.strokeStyle = mainC;
         ctx.lineWidth = lineW;
         ctx.lineCap = 'round';
-        // 轻微光晕（柔和、不扩散成大框）
-        ctx.shadowColor = isBlue ? 'rgba(77,166,255,0.7)' : 'rgba(255,179,0,0.75)';
-        ctx.shadowBlur = 6;
+        // 轻微光晕（贴边微光）
+        ctx.shadowColor = isBlue ? 'rgba(77,166,255,0.6)' : 'rgba(255,179,0,0.65)';
+        ctx.shadowBlur = 4;
         ctx.globalAlpha = 0.95;
         ctx.beginPath();
         // 左上
