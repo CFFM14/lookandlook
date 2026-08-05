@@ -1,0 +1,324 @@
+/**
+ * test_logic.js —— Node 环境逻辑自测（剥离 wx / Canvas 依赖）
+ * 运行：node tools/test_logic.js
+ * 覆盖：PathChecker 连线判定、布局生成、重力 compact、冰冻解冻、炸弹记账、完整消除与胜利流程。
+ */
+'use strict';
+
+const assert = require('assert');
+
+// ── mock 环境 ──────────────────────────────
+global.GameGlobal = {};
+global.wx = {
+  getStorageSync: () => '',
+  setStorageSync: () => {},
+};
+
+function noop() {}
+global.GameGlobal.Tween = {
+  // 测试用：立即应用终值并执行回调（同步）
+  to(obj, props, dur, ease, cb) {
+    for (const k in props) obj[k] = props[k];
+    if (cb) cb();
+  },
+  update: noop,
+};
+global.GameGlobal.Renderer = {
+  spawnFirework: noop, spawnIceShards: noop, spawnBombEffect: noop, spawnWinFireworks: noop,
+  updateParticles: noop,
+};
+global.GameGlobal.SoundManager = { play: noop, setEnabled: noop, isEnabled: () => true };
+
+let winCalled = false;
+global.GameGlobal.Main = {
+  showWin: () => { winCalled = true; },
+  showToast: noop,
+};
+
+require('../js/config.js');
+require('../js/pathChecker.js');
+require('../js/storage.js');
+const Game = require('../js/game.js');
+const PathChecker = GameGlobal.PathChecker;
+
+let passed = 0;
+function ok(cond, name) {
+  if (cond) { passed++; console.log('  ✓ ' + name); }
+  else { console.error('  ✗ FAIL: ' + name); process.exitCode = 1; }
+}
+
+function makeGrid(rows, cols, layout) {
+  const grid = [];
+  for (let r = 0; r <= rows + 1; r++) {
+    grid[r] = [];
+    for (let c = 0; c <= cols + 1; c++) grid[r][c] = 0;
+  }
+  for (let r = 1; r <= rows; r++)
+    for (let c = 1; c <= cols; c++)
+      grid[r][c] = layout[r - 1][c - 1];
+  return grid;
+}
+
+async function main() {
+  console.log('\n[1] PathChecker 连线判定');
+  {
+    // 直线
+    let g = makeGrid(3, 4, [
+      [1, 0, 1, 2],
+      [2, 3, 3, 4],
+      [4, 5, 5, 6],
+    ]);
+    let p = PathChecker.canConnect(g, 3, 4, 1, 1, 1, 3);
+    ok(p && p.length === 2, '直线连接');
+
+    // 不能连（中间被挡）
+    g = makeGrid(3, 3, [
+      [1, 2, 3],
+      [2, 3, 1],
+      [3, 1, 2],
+    ]);
+    p = PathChecker.canConnect(g, 3, 3, 1, 1, 3, 1);
+    ok(p === null, '被挡不可连（垂直方向中间有卡）');
+
+    // L 形
+    g = makeGrid(3, 4, [
+      [1, 2, 2, 0],
+      [0, 1, 3, 3],
+      [4, 4, 5, 5],
+    ]);
+    p = PathChecker.canConnect(g, 3, 4, 1, 1, 2, 2);
+    ok(p && p.length === 3, 'L 形连接');
+
+    // Z 形绕外围
+    g = makeGrid(4, 4, [
+      [1, 0, 0, 0],
+      [2, 2, 2, 0],
+      [0, 0, 0, 0],
+      [0, 0, 1, 0],
+    ]);
+    p = PathChecker.canConnect(g, 4, 4, 1, 1, 4, 3);
+    ok(p && p.length === 4, 'Z 形绕外围连接');
+
+    // 同卡不可连
+    g = makeGrid(3, 3, [
+      [1, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0],
+    ]);
+    p = PathChecker.canConnect(g, 3, 3, 1, 1, 1, 1);
+    ok(p === null, '同一张卡不可连');
+  }
+
+  console.log('\n[2] 布局生成合法性');
+  {
+    for (const lv of [1, 2, 3, 4, 5, 6]) {
+      const game = new Game(lv);
+      const expectPairs = (lv === 1 ? 16 : lv === 2 ? 48 : lv === 3 ? 48 : lv === 4 ? 30 : lv === 5 ? 36 : 56) / 2;
+      ok(game.remainingPairs === expectPairs, '第' + lv + '关 对数=' + expectPairs);
+      const counts = {};
+      let total = 0;
+      for (let r = 1; r <= game.rows; r++) for (let c = 1; c <= game.cols; c++) {
+        const t = game.grid[r][c];
+        if (t === 0) continue;
+        counts[t] = (counts[t] || 0) + 1;
+        total++;
+      }
+      ok(total === expectPairs * 2, '第' + lv + '关 卡片总数正确');
+      for (const t in counts) {
+        if (counts[t] % 2 !== 0) { ok(false, '第' + lv + '关 类型' + t + ' 数量非偶数'); break; }
+      }
+    }
+  }
+
+  console.log('\n[3] 重力 down（第3关）');
+  {
+    const g = new Game(3);
+    // 模拟消除第 6 行两格
+    g.grid[6][3] = 0; g.cardNodes[6][3] = null;
+    g.grid[6][5] = 0; g.cardNodes[6][5] = null;
+    const moves = g.applyGravity();
+    ok(g.grid[6][3] !== 0, '第3列底部被填充');
+    ok(g.grid[6][5] !== 0, '第5列底部被填充');
+    ok(moves.some(m => m.fc === 3 && m.tr === 6 && m.tc === 3), '第3列有下移动画');
+    // 不变量：非空卡数量不变
+    let cnt = 0;
+    for (let r = 1; r <= 6; r++) for (let c = 1; c <= 8; c++) if (g.grid[r][c]) cnt++;
+    ok(cnt === 46, '重力后卡片数量守恒');
+    // 每列底部无空洞
+    let bottomFull = true;
+    for (let c = 1; c <= 8; c++) {
+      for (let r = 6; r >= 1; r--) {
+        if (g.grid[r][c] === 0) {
+          for (let r2 = r - 1; r2 >= 1; r2--) if (g.grid[r2][c]) bottomFull = false;
+          break;
+        }
+      }
+    }
+    ok(bottomFull, '所有列底部无空洞');
+  }
+
+  console.log('\n[4] 重力 left（第5关）');
+  {
+    const g = new Game(5);
+    g.grid[3][1] = 0; g.cardNodes[3][1] = null;
+    g.grid[3][6] = 0; g.cardNodes[3][6] = null;
+    const moves = g.applyGravity();
+    ok(g.grid[3][1] !== 0 && g.grid[3][2] !== 0, '第3行左侧被填充');
+    ok(moves.some(m => m.fr === 3 && m.fc === 2 && m.tr === 3 && m.tc === 1), '第3行有左移动画');
+    let rowFull = true;
+    for (let c = 1; c <= 6; c++) {
+      if (g.grid[3][c] === 0) {
+        for (let c2 = c + 1; c2 <= 6; c2++) if (g.grid[3][c2]) rowFull = false;
+        break;
+      }
+    }
+    ok(rowFull, '第3行左侧无空洞');
+  }
+
+  console.log('\n[5] 冰冻机制（第4关）');
+  {
+    const g = new Game(4);
+    const frozenCells = [];
+    for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) if (g.frozen[r][c]) frozenCells.push([r, c]);
+    ok(frozenCells.length >= 5, '冰冻卡数量合理（约30%的9张，含不相邻约束）');
+    if (frozenCells.length) {
+      const [fr, fc] = frozenCells[0];
+      ok(g.cardNodes[fr][fc].state === 'frozen', '冰冻卡初始状态 frozen');
+      g.onTapCard(fr, fc); // mock Tween 同步解冻
+      ok(g.frozen[fr][fc] === 0, '点击后解冻');
+      ok(g.cardNodes[fr][fc].state === 'normal', '解冻后状态 normal');
+      ok(g.isProcessing === false, '解冻完成后解锁输入');
+    }
+    // 炸弹直接炸冰冻卡（不崩溃且记账正确）
+    g.useBomb();
+    await new Promise(r => setTimeout(r, 600));
+    ok(g.isProcessing === false, '炸弹流程结束');
+    const rem = g.remainingPairs;
+    ok(rem >= 0 && rem < 15, '炸弹后剩余对数合理');
+  }
+
+  console.log('\n[6] 完整消除与胜利流程（第2关）');
+  {
+    winCalled = false;
+    const g = new Game(2);
+    let guard = 0;
+    while (g.remainingPairs > 0 && guard++ < 100) {
+      let found = false;
+      outer:
+      for (let r1 = 1; r1 <= g.rows; r1++) {
+        for (let c1 = 1; c1 <= g.cols; c1++) {
+          if (!g.grid[r1][c1]) continue;
+          for (let r2 = 1; r2 <= g.rows; r2++) {
+            for (let c2 = 1; c2 <= g.cols; c2++) {
+              if (r1 === r2 && c1 === c2) continue;
+              if (g.grid[r1][c1] !== g.grid[r2][c2]) continue;
+              if (PathChecker.canConnect(g.grid, g.rows, g.cols, r1, c1, r2, c2)) {
+                g.onTapCard(r1, c1);
+                g.onTapCard(r2, c2);
+                await new Promise(r => setTimeout(r, 520));
+                found = true;
+                break outer;
+              }
+            }
+          }
+        }
+      }
+      if (!found) break; // 死局：自动清场是合法胜利路径（下方断言覆盖）
+    }
+    // 等待胜利回调：正常消除 450ms 记账 + 400ms 面板；死局清场最长 48张×50ms+400ms
+    await new Promise(r => setTimeout(r, 3200));
+    ok(g.remainingPairs === 0, '消除完所有对（含死局自动清场）');
+    ok(g.moves <= 24 && g.moves >= 1, '步数在合法范围');
+    ok(winCalled, '触发胜利（showWin 被调用）');
+  }
+
+  console.log('\n[7] 重力关胜利流程（第3关）');
+  {
+    winCalled = false;
+    const g = new Game(3);
+    let guard = 0;
+    while (g.remainingPairs > 0 && guard++ < 120) {
+      let found = false;
+      outer:
+      for (let r1 = 1; r1 <= g.rows; r1++) {
+        for (let c1 = 1; c1 <= g.cols; c1++) {
+          if (!g.grid[r1][c1]) continue;
+          for (let r2 = 1; r2 <= g.rows; r2++) {
+            for (let c2 = 1; c2 <= g.cols; c2++) {
+              if (r1 === r2 && c1 === c2) continue;
+              if (g.grid[r1][c1] !== g.grid[r2][c2]) continue;
+              if (PathChecker.canConnect(g.grid, g.rows, g.cols, r1, c1, r2, c2)) {
+                g.onTapCard(r1, c1);
+                g.onTapCard(r2, c2);
+                await new Promise(r => setTimeout(r, 1400)); // 消除450ms + 最长5格重力动画600ms
+                found = true;
+                break outer;
+              }
+            }
+          }
+        }
+      }
+      if (!found) break;
+    }
+    // 等待胜利回调（含死局清场最长时长）
+    await new Promise(r => setTimeout(r, 3200));
+    ok(winCalled, '重力关最终胜利');
+    // 重力后无空洞
+    let ok2 = true;
+    for (let c = 1; c <= g.cols; c++) {
+      for (let r = g.rows; r >= 1; r--) {
+        if (g.grid[r][c] === 0) {
+          for (let r2 = r - 1; r2 >= 1; r2--) if (g.grid[r2][c]) ok2 = false;
+          break;
+        }
+      }
+    }
+    ok(ok2, '重力关全程列底无空洞');
+  }
+
+  console.log('\n[8] 会话失效（restart 后旧定时器不触发）');
+  {
+    winCalled = false;
+    const g = new Game(1);
+    // 找一对可消除的，触发消除流程
+    let found = false;
+    outer:
+    for (let r1 = 1; r1 <= g.rows; r1++) {
+      for (let c1 = 1; c1 <= g.cols; c1++) {
+        if (!g.grid[r1][c1]) continue;
+        for (let r2 = 1; r2 <= g.rows; r2++) {
+          for (let c2 = 1; c2 <= g.cols; c2++) {
+            if (r1 === r2 && c1 === c2) continue;
+            if (g.grid[r1][c1] !== g.grid[r2][c2]) continue;
+            if (PathChecker.canConnect(g.grid, g.rows, g.cols, r1, c1, r2, c2)) {
+              g.onTapCard(r1, c1);
+              g.onTapCard(r2, c2);
+              found = true;
+              break outer;
+            }
+          }
+        }
+      }
+    }
+    ok(found, '触发一次消除流程');
+    // 消除流程进行中（450ms 记账前）立即 restart
+    g.restart();
+    const expectPairs = g.remainingPairs;
+    await new Promise(r => setTimeout(r, 800));
+    ok(g.remainingPairs === expectPairs, '旧消除流程未污染新棋盘计数');
+    ok(!winCalled, '旧胜利回调未误触发（无结算弹出）');
+    ok(g.isProcessing === false, 'restart 后输入已解锁');
+  }
+
+  console.log('\n' + '='.repeat(40));
+  if (process.exitCode) {
+    console.log('存在失败用例');
+  } else {
+    console.log('全部通过 ✓ (' + passed + ' 项断言)');
+  }
+}
+
+main().catch(e => {
+  console.error('测试异常:', e);
+  process.exitCode = 1;
+});
