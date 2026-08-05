@@ -801,15 +801,23 @@
     return { x: x, y: y };
   };
 
-  /** 设计坐标 → 逻辑格子 {r, c} | null */
+  /**
+   * 设计坐标 → 逻辑格子 {r, c} | null
+   * 卡片重叠排列时（负间距），后绘制的卡在最上层（原版 Cocos 触摸同样按层级优先），
+   * 因此从右下角（最后绘制）向左上遍历，命中首个包含点击点的卡。
+   */
   Game.prototype.hitTest = function (x, y) {
     var m = this.metrics;
-    var c = Math.round((x - m.ox - m.cw / 2) / (m.cw + m.gx)) + 1;
-    var r = Math.round((y - m.oy - m.ch / 2) / (m.ch + m.gy)) + 1;
-    if (r < 1 || r > this.rows || c < 1 || c > this.cols) return null;
-    var px = this.logicToPixel(r, c);
-    if (Math.abs(x - px.x) > m.cw / 2 + 4 || Math.abs(y - px.y) > m.ch / 2 + 4) return null;
-    return { r: r, c: c };
+    var hw = m.cw / 2, hh = m.ch / 2;
+    for (var r = this.rows; r >= 1; r--) {
+      for (var c = this.cols; c >= 1; c--) {
+        var px = this.logicToPixel(r, c);
+        if (Math.abs(x - px.x) <= hw && Math.abs(y - px.y) <= hh) {
+          return { r: r, c: c };
+        }
+      }
+    }
+    return null;
   };
 
   /** 剩余对数的可用提示（UI 用） */

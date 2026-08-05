@@ -15,9 +15,9 @@ GameGlobal.DESIGN_H = 844;
 GameGlobal.TOP_BAR_H = 96;       // 顶部信息区高度（返回/关卡名/计时）
 GameGlobal.BOTTOM_BAR_H = 116;    // 底部工具按钮区高度
 GameGlobal.GRID_MARGIN_X = 12;    // 网格左右留白
-// 卡片间隙：0 = 紧贴排列（连连看规则中卡片互相紧挨，避免用户误以为"只有贴着的才能消"）。
-// 原版 Cocos 配置即为负间距（重叠），此处贴合即可；连线判定与视觉间距无关。
-GameGlobal.GRID_GAP = 0;
+// 卡片重叠比例（仿原版 Cocos 负间距 -12/-26：卡片互相叠放，视觉紧凑）。
+// 0.18 ≈ 卡片边长 18% 被相邻卡片覆盖；连线的外围通道逻辑不受影响。
+GameGlobal.GRID_OVERLAP_RATIO = 0.18;
 
 /** 水果名称（与 images/fruit_01~12.png 一一对应） */
 GameGlobal.FRUIT_NAMES = [
@@ -82,16 +82,19 @@ GameGlobal.getLevelConfig = function (id) {
 GameGlobal.getGridMetrics = function (cfg) {
   var availW = GameGlobal.DESIGN_W - GameGlobal.GRID_MARGIN_X * 2;
   var availH = GameGlobal.DESIGN_H - GameGlobal.TOP_BAR_H - GameGlobal.BOTTOM_BAR_H;
-  var gap = GameGlobal.GRID_GAP;
-  var cardSize = Math.floor((availW - gap * (cfg.cols - 1)) / cfg.cols);
-  var cardSizeH = Math.floor((availH - gap * (cfg.rows - 1)) / cfg.rows);
+  var ratio = GameGlobal.GRID_OVERLAP_RATIO; // 重叠比例（负间距）
+  // cardSize * (cols - (cols-1)*ratio) ≤ availW → 网格恰好占满可用宽度
+  var cardSize = Math.floor(availW / (cfg.cols - (cfg.cols - 1) * ratio));
+  var cardSizeH = Math.floor(availH / (cfg.rows - (cfg.rows - 1) * ratio));
   cardSize = Math.max(32, Math.min(cardSize, cardSizeH));
 
-  var gridW = cfg.cols * cardSize + (cfg.cols - 1) * gap;
-  var gridH = cfg.rows * cardSize + (cfg.rows - 1) * gap;
+  var gx = -Math.round(cardSize * ratio);
+  var gy = -Math.round(cardSize * ratio);
+  var gridW = cfg.cols * cardSize + (cfg.cols - 1) * gx;
+  var gridH = cfg.rows * cardSize + (cfg.rows - 1) * gy;
   return {
     cw: cardSize, ch: cardSize,
-    gx: gap, gy: gap,
+    gx: gx, gy: gy,
     ox: (GameGlobal.DESIGN_W - gridW) / 2,
     oy: GameGlobal.TOP_BAR_H + (availH - gridH) / 2,
   };
