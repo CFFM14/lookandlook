@@ -63,6 +63,30 @@ GameGlobal.LEVELS = [
     gravity: null, frozenRatio: 0.3,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },
+  {
+    id: 7, name: '下坠冰雨', desc: '下坠 + 冰块，双重考验！', difficulty: 3,
+    rows: 8, cols: 6, fruitTypeCount: 8,
+    gravity: 'down', frozenRatio: 0.25,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  },
+  {
+    id: 8, name: '上浮冰晶', desc: '上浮 + 冰块，越玩越难', difficulty: 3,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'up', frozenRatio: 0.25,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  },
+  {
+    id: 9, name: '左移冰川', desc: '左移 + 冰块，冰封挑战', difficulty: 4,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'left', frozenRatio: 0.3,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  },
+  {
+    id: 10, name: '终极冰暴', desc: '右移 + 冰块，终极试炼！', difficulty: 4,
+    rows: 8, cols: 6, fruitTypeCount: 12,
+    gravity: 'right', frozenRatio: 0.3,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  },
 ];
 
 GameGlobal.TOTAL_LEVELS = GameGlobal.LEVELS.length;

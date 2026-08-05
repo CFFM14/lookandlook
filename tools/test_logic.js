@@ -116,10 +116,10 @@ async function main() {
 
   console.log('\n[2] 布局生成合法性');
   {
-    for (const lv of [1, 2, 3, 4, 5, 6]) {
-      const game = new Game(lv);
-      const expectPairs = (lv === 1 ? 24 : lv === 2 ? 48 : lv === 3 ? 48 : lv === 4 ? 40 : lv === 5 ? 40 : 42) / 2;
-      ok(game.remainingPairs === expectPairs, '第' + lv + '关 对数=' + expectPairs);
+    for (const lv of GameGlobal.LEVELS) {
+      const game = new Game(lv.id);
+      const expectPairs = lv.rows * lv.cols / 2;
+      ok(game.remainingPairs === expectPairs, '第' + lv.id + '关 对数=' + expectPairs);
       const counts = {};
       let total = 0;
       for (let r = 1; r <= game.rows; r++) for (let c = 1; c <= game.cols; c++) {
@@ -128,9 +128,9 @@ async function main() {
         counts[t] = (counts[t] || 0) + 1;
         total++;
       }
-      ok(total === expectPairs * 2, '第' + lv + '关 卡片总数正确');
+      ok(total === expectPairs * 2, '第' + lv.id + '关 卡片总数正确');
       for (const t in counts) {
-        if (counts[t] % 2 !== 0) { ok(false, '第' + lv + '关 类型' + t + ' 数量非偶数'); break; }
+        if (counts[t] % 2 !== 0) { ok(false, '第' + lv.id + '关 类型' + t + ' 数量非偶数'); break; }
       }
     }
   }
@@ -439,7 +439,52 @@ async function main() {
     ok(left === 0, '通关后棋盘清空');
   }
 
-  console.log('\n[10] 经济系统（工具限次 / 金币 / 商店）');
+  console.log('\n[10] 组合关完整通关（第7关·下坠重力+冰冻并存）');
+  {
+    winCalled = false;
+    const g = new Game(7);
+    ok(g.cfg.gravity === 'down' && g.cfg.frozenRatio > 0, '第7关配置为重力+冰冻组合');
+    // 存在冰冻卡
+    let frozenCount = 0;
+    for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) if (g.frozen[r][c]) frozenCount++;
+    ok(frozenCount >= 8, '第7关含冰冻卡（约25%的12张）');
+    let guard = 0;
+    while (g.remainingPairs > 0 && guard++ < 150) {
+      let found = false;
+      outer:
+      for (let r1 = 1; r1 <= g.rows; r1++) {
+        for (let c1 = 1; c1 <= g.cols; c1++) {
+          const card = g.cardNodes[r1][c1];
+          if (!card || card.state === 'eliminated') continue;
+          for (let r2 = 1; r2 <= g.rows; r2++) {
+            for (let c2 = 1; c2 <= g.cols; c2++) {
+              if (r1 === r2 && c1 === c2) continue;
+              const c2card = g.cardNodes[r2][c2];
+              if (!c2card || c2card.state === 'eliminated') continue;
+              if (g.grid[r1][c1] !== g.grid[r2][c2]) continue;
+              if (PathChecker.canConnect(g.grid, g.rows, g.cols, r1, c1, r2, c2)) {
+                g.onTapCard(r1, c1);
+                g.onTapCard(r2, c2);
+                await new Promise(r => setTimeout(r, 780)); // 消除450ms + 重力动画
+                found = true;
+                break outer;
+              }
+            }
+          }
+        }
+      }
+      if (!found) break; // 死局 / 剩单例 → 自动清场（合法路径）
+    }
+    await new Promise(r => setTimeout(r, 3600));
+    ok(winCalled, '组合关最终胜利（重力+冰冻并存不卡死）');
+    let left = 0;
+    for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) {
+      if (g.cardNodes[r][c] && g.cardNodes[r][c].state !== 'eliminated') left++;
+    }
+    ok(left === 0, '组合关通关后棋盘清空');
+  }
+
+  console.log('\n[11] 经济系统（工具限次 / 金币 / 商店）');
   {
     const S = GameGlobal.Storage;
     // 清空存档相关 key（不影响前面的关卡测试结果）

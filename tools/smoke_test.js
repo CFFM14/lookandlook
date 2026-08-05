@@ -73,7 +73,7 @@ async function main() {
   check(typeof GameGlobal.PathChecker === 'object', 'PathChecker 已挂载');
   check(typeof GameGlobal.Game === 'function', 'Game 类已挂载');
   check(typeof GameGlobal.Main === 'object', 'Main 已挂载');
-  check(GameGlobal.LEVELS.length === 6, '6 个关卡配置');
+  check(GameGlobal.LEVELS.length === 10, '10 个关卡配置');
 
   await waitReady();
   console.log('[B] 启动');

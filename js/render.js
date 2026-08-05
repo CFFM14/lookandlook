@@ -433,9 +433,9 @@
       this.drawText('选择关卡', cx, 70, 30, '#8B5A2B', 'center', true);
       this.drawTextButton(20, 44, 70, 40, '返回', { id: 'levels_back', fontSize: 16 });
 
-      var cardW = 168, cardH = 168, gap = 14;
+      var cardW = 132, cardH = 132, gap = 12;
       var startX = (GameGlobal.DESIGN_W - cardW * 2 - gap) / 2;
-      var startY = 130;
+      var startY = 124;
 
       for (var i = 0; i < GameGlobal.TOTAL_LEVELS; i++) {
         var lv = GameGlobal.LEVELS[i];
@@ -466,21 +466,21 @@
         // 难度星
         var starStr = '';
         for (var s = 0; s < 3; s++) starStr += s < lv.difficulty ? '★' : '☆';
-        this.drawText(starStr, x + cardW / 2, y + 22, 16, locked ? '#999' : '#F5A623', 'center', false);
+        this.drawText(starStr, x + cardW / 2, y + 18, 14, locked ? '#999' : '#F5A623', 'center', false);
 
         if (locked) {
-          this.drawText('第' + lv.id + '关', x + cardW / 2, y + cardH / 2 - 10, 22, '#FFF', 'center', true);
-          this.drawText('🔒', x + cardW / 2, y + cardH / 2 + 30, 26, '#FFF', 'center', false);
+          this.drawText('第' + lv.id + '关', x + cardW / 2, y + cardH / 2 - 8, 18, '#FFF', 'center', true);
+          this.drawText('🔒', x + cardW / 2, y + cardH / 2 + 26, 24, '#FFF', 'center', false);
         } else {
-          this.drawText('第' + lv.id + '关', x + cardW / 2, y + 58, 20, '#8B5A2B', 'center', true);
-          this.drawText(lv.name, x + cardW / 2, y + 90, 24, '#D2691E', 'center', true);
+          this.drawText('第' + lv.id + '关', x + cardW / 2, y + 46, 16, '#8B5A2B', 'center', true);
+          this.drawText(lv.name, x + cardW / 2, y + 72, 19, '#D2691E', 'center', true);
           // 最佳成绩
           var best = GameGlobal.Storage.getBestScore(lv.id);
           if (best) {
             this.drawText('最佳：' + best.moves + '步 ' + best.elapsed + 's',
-              x + cardW / 2, y + cardH - 30, 13, '#A08060', 'center', false);
+              x + cardW / 2, y + cardH - 16, 11, '#A08060', 'center', false);
           } else {
-            this.drawText('尚未通关', x + cardW / 2, y + cardH - 30, 13, '#C0A080', 'center', false);
+            this.drawText('尚未通关', x + cardW / 2, y + cardH - 16, 11, '#C0A080', 'center', false);
           }
         }
         ctx.restore();
