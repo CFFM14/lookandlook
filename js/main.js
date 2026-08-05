@@ -63,7 +63,6 @@
     btn_bomb: 'images/btn_bomb.png',
     btn_shuffle: 'images/btn_shuffle.png',
     btn_hint: 'images/btn_hint.png',
-    panel_win: 'images/panel_win.png',
   };
   for (var fi = 1; fi <= 12; fi++) {
     IMAGE_FILES['fruit_' + (fi < 10 ? '0' : '') + fi] = 'images/fruit_' + (fi < 10 ? '0' : '') + fi + '.png';
@@ -85,6 +84,7 @@
     toast: null,
     soundOn: true,
     lastTime: 0,
+    winShownAt: 0, // 结算面板出现时间（弹入动画基准）
 
     buttonBounds: [],
     pressedId: null,
@@ -217,6 +217,7 @@
       // 守卫：胜利回调延迟弹出，若玩家已离开游戏页（返回/切关）则忽略
       if (this.page !== 'game') return;
       this.winData = { levelId: levelId, moves: moves, elapsed: elapsed };
+      this.winShownAt = Date.now();
       this.page = 'win';
     },
 

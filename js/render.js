@@ -6,6 +6,13 @@
 (function () {
   'use strict';
 
+  /** easeOutBack：带轻微回弹的缓出（结算面板弹入用） */
+  function easeOutBack(p) {
+    var c1 = 1.70158, c3 = c1 + 1;
+    var t = p - 1;
+    return 1 + c3 * t * t * t + c1 * t * t;
+  }
+
   var Renderer = {
     ctx: null,
     images: {},
@@ -44,7 +51,10 @@
       ctx.fillText(text, x, y);
     },
 
-    /** 程序圆角按钮 + 文字，返回是否被按下 */
+    /**
+     * 程序圆角按钮 + 文字，返回是否被按下
+     * opts: { id, bg, gradient:[上,下], border, textColor, radius, fontSize, icon, shadow, bottomBar }
+     */
     drawTextButton: function (x, y, w, h, text, opts) {
       var ctx = this.ctx;
       opts = opts || {};
@@ -62,12 +72,40 @@
       ctx.scale(sx, sx);
       ctx.translate(-cx, -cy);
 
+      // 阴影
+      if (opts.shadow) {
+        ctx.shadowColor = opts.shadow;
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 3;
+      }
       this.roundRectPath(x, y, w, h, opts.radius || 14);
-      ctx.fillStyle = bg;
+      if (opts.gradient) {
+        var g = ctx.createLinearGradient(x, y, x, y + h);
+        g.addColorStop(0, opts.gradient[0]);
+        g.addColorStop(1, opts.gradient[1]);
+        ctx.fillStyle = g;
+      } else {
+        ctx.fillStyle = bg;
+      }
       ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
       ctx.lineWidth = 2;
       ctx.strokeStyle = border;
       ctx.stroke();
+
+      // 3D 底边（模拟立体感）
+      if (opts.bottomBar) {
+        var r = opts.radius || 14;
+        this.roundRectPath(x, y + h * 0.55, w, h * 0.45, r);
+        ctx.save();
+        ctx.clip();
+        ctx.fillStyle = opts.bottomBar;
+        ctx.globalAlpha = pressed ? 0.5 : 0.3;
+        ctx.fillRect(x, y + h * 0.55, w, h * 0.45);
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
 
       if (opts.icon) {
         var img = this.images[opts.icon];
@@ -526,57 +564,210 @@
       }
     },
 
-    /** 结算面板 */
+    /**
+     * 结算面板 —— 全程序绘制（替代原静态图片），带弹入动画与星星点缀
+     * 布局（面板内相对坐标）：
+     *   0~88 金色标题条 / 108 关卡名 / 142~252 成绩三卡 / 272 下一关 / 340 再玩一次 / 398 返回首页
+     */
     renderWin: function () {
       this.renderGame(false);
 
       var ctx = this.ctx;
+      var now = Main.lastTime;
+      var cx = GameGlobal.DESIGN_W / 2;
+
       // 暗化遮罩
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.fillRect(0, 0, GameGlobal.DESIGN_W, GameGlobal.DESIGN_H);
 
-      var panelW = 300, panelH = 380;
-      var px = (GameGlobal.DESIGN_W - panelW) / 2;
-      var py = (GameGlobal.DESIGN_H - panelH) / 2 + 10;
-
-      // 面板底图
-      var img = this.images['panel_win'];
-      if (img) {
-        ctx.save();
-        // 圆角裁剪
-        this.roundRectPath(px, py, panelW, panelH, 20);
-        ctx.clip();
-        ctx.drawImage(img, px, py, panelW, panelH);
-        ctx.restore();
-      } else {
-        this.roundRectPath(px, py, panelW, panelH, 20);
-        ctx.fillStyle = '#FFF8E8';
-        ctx.fill();
-        ctx.strokeStyle = '#E8B34B';
-        ctx.lineWidth = 3;
-        ctx.stroke();
+      // 面板外星星点缀（呼吸闪烁）
+      var starSeed = [
+        { x: 40, y: 240, r: 7, ph: 0 },
+        { x: 350, y: 210, r: 5, ph: 1.3 },
+        { x: 58, y: 620, r: 5, ph: 2.2 },
+        { x: 336, y: 600, r: 7, ph: 0.8 },
+        { x: 195, y: 120, r: 6, ph: 1.8 },
+        { x: 195, y: 720, r: 6, ph: 2.6 },
+      ];
+      for (var s = 0; s < starSeed.length; s++) {
+        var st = starSeed[s];
+        var alpha = 0.35 + 0.3 * Math.sin(now / 350 + st.ph);
+        this.drawStar(st.x, st.y, st.r, '#FFE28A', alpha);
       }
 
+      // 面板弹入动画（easeOutBack 弹性）
+      var t = Math.min(1, (now - Main.winShownAt) / 450);
+      var scale = easeOutBack(t);
+
+      var panelW = 330, panelH = 468;
+      var px = cx - panelW / 2;
+      var py = (GameGlobal.DESIGN_H - panelH) / 2 - 10;
+
+      ctx.save();
+      ctx.translate(cx, py + panelH / 2);
+      ctx.scale(scale, scale);
+      ctx.translate(-cx, -(py + panelH / 2));
+
+      // 面板主体（暖金渐变 + 外发光）
+      ctx.save();
+      ctx.shadowColor = 'rgba(232, 169, 61, 0.6)';
+      ctx.shadowBlur = 26;
+      this.roundRectPath(px, py, panelW, panelH, 24);
+      var bodyGrad = ctx.createLinearGradient(px, py, px, py + panelH);
+      bodyGrad.addColorStop(0, '#FFFDF2');
+      bodyGrad.addColorStop(1, '#FFEFC4');
+      ctx.fillStyle = bodyGrad;
+      ctx.fill();
+      ctx.restore();
+
+      // 双描边
+      this.roundRectPath(px, py, panelW, panelH, 24);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#E8A93D';
+      ctx.stroke();
+      this.roundRectPath(px + 5, py + 5, panelW - 10, panelH - 10, 20);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.stroke();
+
+      // ── 顶部金色标题条 ──
+      var barH = 88;
+      this.roundRectPath(px, py, panelW, barH, 24);
+      ctx.save();
+      ctx.clip();
+      var barGrad = ctx.createLinearGradient(px, py, px, py + barH);
+      barGrad.addColorStop(0, '#FFCE5C');
+      barGrad.addColorStop(1, '#F2A93B');
+      ctx.fillStyle = barGrad;
+      ctx.fillRect(px, py, panelW, barH);
+      // 标题条下缘高光弧
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(px, py + barH - 6, panelW, 6);
+      ctx.restore();
+
+      // 标题条内装饰小星
+      this.drawStar(px + 36, py + 30, 7, 'rgba(255,255,255,0.85)', 0.9);
+      this.drawStar(px + panelW - 36, py + 30, 7, 'rgba(255,255,255,0.85)', 0.9);
+      this.drawText('🎉 恭喜通关 🎉', cx, py + 46, 29, '#FFF', 'center', true);
+
+      // ── 关卡名 ──
       var winData = Main.winData;
-      this.drawText('🎉 通关啦！', GameGlobal.DESIGN_W / 2, py + 60, 30, '#C0392B', 'center', true);
-      this.drawText('第' + winData.levelId + '关 · ' + GameGlobal.getLevelConfig(winData.levelId).name,
-        GameGlobal.DESIGN_W / 2, py + 110, 17, '#8B5A2B', 'center', false);
-      this.drawText('用时 ' + winData.elapsed + 's    步数 ' + winData.moves,
-        GameGlobal.DESIGN_W / 2, py + 150, 18, '#5D4037', 'center', false);
+      var lvCfg = GameGlobal.getLevelConfig(winData.levelId);
+      this.drawText('第' + winData.levelId + '关 · ' + lvCfg.name, cx, py + 114, 20, '#8B5A2B', 'center', true);
+      // 分隔线
+      ctx.strokeStyle = 'rgba(232, 169, 61, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px + 50, py + 134);
+      ctx.lineTo(px + panelW - 50, py + 134);
+      ctx.stroke();
 
+      // ── 成绩三卡 ──
+      var cardW = 92, cardH = 102, cardGap = 14;
+      var cardsX = cx - (cardW * 3 + cardGap * 2) / 2;
+      var cardsY = py + 146;
+      var statDefs = [
+        { label: '⏱ 用时', value: winData.elapsed + 's', sub: '' },
+        { label: '🍀 步数', value: String(winData.moves), sub: '步' },
+      ];
+      for (var i = 0; i < 2; i++) {
+        var x0 = cardsX + i * (cardW + cardGap);
+        this.drawStatCard(x0, cardsY, cardW, cardH, statDefs[i].label, statDefs[i].value, statDefs[i].sub);
+      }
+      // 最佳成绩卡（第三卡）
       var best = GameGlobal.Storage.getBestScore(winData.levelId);
-      if (best) {
-        var isBest = best.moves === winData.moves && best.elapsed === winData.elapsed;
-        this.drawText((isBest ? '🏆 新纪录！' : '最佳 ') + best.moves + '步 ' + best.elapsed + 's',
-          GameGlobal.DESIGN_W / 2, py + 185, 15, '#F5A623', 'center', false);
+      var isBest = !!best && best.moves === winData.moves && best.elapsed === winData.elapsed;
+      var bestText = best ? best.moves + '步 · ' + best.elapsed + 's' : '—';
+      this.drawStatCard(cardsX + 2 * (cardW + cardGap), cardsY, cardW, cardH,
+        isBest ? '🏆 新纪录' : '🏆 最佳', bestText, '', isBest);
+
+      // 新纪录徽章（金色旋转小标签）
+      if (isBest) {
+        ctx.save();
+        ctx.translate(px + panelW - 52, py + 128);
+        ctx.rotate(0.12);
+        var bW = 92, bH = 34;
+        this.roundRectPath(-bW / 2, -bH / 2, bW, bH, 17);
+        var badgeGrad = ctx.createLinearGradient(0, -bH / 2, 0, bH / 2);
+        badgeGrad.addColorStop(0, '#FFD54A');
+        badgeGrad.addColorStop(1, '#F5A623');
+        ctx.fillStyle = badgeGrad;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#D98A1A';
+        ctx.stroke();
+        this.drawText('✦ 新纪录 ✦', 0, 1, 15, '#FFF', 'center', true);
+        ctx.restore();
       }
 
+      // ── 按钮 ──
       var hasNext = winData.levelId < GameGlobal.TOTAL_LEVELS;
+      var btnW = panelW - 60;
+      var bx = cx - btnW / 2;
       if (hasNext) {
-        this.drawTextButton(px + 20, py + 220, panelW - 40, 56, '下一关', { id: 'win_next', fontSize: 22 });
+        this.drawTextButton(bx, py + 268, btnW, 58, '下一关 ▶', {
+          id: 'win_next', fontSize: 24,
+          gradient: ['#FFD66B', '#F2A93B'], border: '#D98A1A', textColor: '#FFF',
+          shadow: 'rgba(230,150,30,0.5)', bottomBar: '#D98A1A', radius: 16,
+        });
       }
-      this.drawTextButton(px + 20, py + 286, panelW - 40, 48, '再玩一次', { id: 'win_replay', fontSize: 19 });
-      this.drawTextButton(px + 20, py + 342, panelW - 40, 40, '返回首页', { id: 'win_home', fontSize: 17 });
+      this.drawTextButton(bx, py + 336, btnW, 50, '再玩一次', {
+        id: 'win_replay', fontSize: 20,
+        bg: '#FFFDF4', border: '#E8B34B', textColor: '#8B5A2B',
+        shadow: 'rgba(180,140,60,0.25)', radius: 15,
+      });
+      this.drawTextButton(bx, py + 398, btnW, 38, '返回首页', {
+        id: 'win_home', fontSize: 16,
+        bg: 'rgba(0,0,0,0)', border: 'transparent', textColor: '#A08050',
+      });
+
+      ctx.restore();
+    },
+
+    /** 成绩小卡：白底圆角 + 标签 + 数值（新纪录时金框高亮） */
+    drawStatCard: function (x, y, w, h, label, value, sub, highlight) {
+      var ctx = this.ctx;
+      this.roundRectPath(x, y, w, h, 14);
+      var grad = ctx.createLinearGradient(x, y, x, y + h);
+      if (highlight) {
+        grad.addColorStop(0, '#FFF6DC');
+        grad.addColorStop(1, '#FFE9AE');
+      } else {
+        grad.addColorStop(0, '#FFFFFF');
+        grad.addColorStop(1, '#FFF6E2');
+      }
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.lineWidth = highlight ? 2.5 : 1.5;
+      ctx.strokeStyle = highlight ? '#F5A623' : '#F0D9A8';
+      ctx.stroke();
+
+      this.drawText(label, x + w / 2, y + 26, 13, highlight ? '#C87E0F' : '#A08060', 'center', true);
+      this.drawText(value, x + w / 2, y + 62, 24, highlight ? '#D98A1A' : '#5D4037', 'center', true);
+      if (sub) {
+        this.drawText(sub, x + w / 2 + (value.length + 1) * 6, y + 62, 13, '#A08060', 'center', false);
+      }
+    },
+
+    /** 程序绘制五角星 */
+    drawStar: function (x, y, r, color, alpha) {
+      var ctx = this.ctx;
+      ctx.save();
+      ctx.globalAlpha = alpha === undefined ? 1 : alpha;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      for (var i = 0; i < 5; i++) {
+        var outer = i * 2 * Math.PI / 5 - Math.PI / 2;
+        var inner = outer + Math.PI / 5;
+        var ox = x + r * Math.cos(outer), oy = y + r * Math.sin(outer);
+        var ix = x + r * 0.42 * Math.cos(inner), iy = y + r * 0.42 * Math.sin(inner);
+        if (i === 0) ctx.moveTo(ox, oy);
+        else ctx.lineTo(ox, oy);
+        ctx.lineTo(ix, iy);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
     },
   };
 
