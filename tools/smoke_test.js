@@ -22,6 +22,8 @@ const ctxStub = {
   Object.defineProperty(ctxStub, k, { set() {}, get() { return ''; } });
 });
 
+// 内存存储（模拟 wx 存档，测试可读写）
+const memStore = { 'look_unlocked': '1' };
 global.wx = {
   getSystemInfoSync: () => ({ windowWidth: 390, windowHeight: 844, pixelRatio: 2 }),
   createCanvas: () => ({ width: 0, height: 0, getContext: () => ctxStub }),
@@ -30,8 +32,8 @@ global.wx = {
     set src(v) { if (this.onload) setTimeout(this.onload, 0); },
   }),
   onTouchStart() {}, onTouchEnd() {},
-  getStorageSync: () => '',
-  setStorageSync() {},
+  getStorageSync: (k) => (memStore[k] !== undefined ? memStore[k] : ''),
+  setStorageSync: (k, v) => { memStore[k] = v; },
   createInnerAudioContext: () => ({
     stop() {}, seek() {}, play() {},
     set src(v) {}, set volume(v) {},
@@ -82,10 +84,21 @@ async function main() {
   GameGlobal.Main.render();
   check(GameGlobal.Main.buttonBounds.some(b => b.id === 'menu_start'), '首页按钮已注册');
 
-  // 进入第 1 关
+  // 「开始游戏」应进入最新解锁的关卡（当前解锁 1 → 第 1 关）
   GameGlobal.UI.onAction('menu_start');
   check(GameGlobal.Main.page === 'game', '进入游戏页');
-  check(GameGlobal.Main.game.levelId === 1, '第 1 关');
+  check(GameGlobal.Main.game.levelId === 1, '最新解锁=1 时进入第 1 关');
+
+  // 解锁推进到第 3 关后，「开始游戏」应直接进入第 3 关
+  memStore['look_unlocked'] = '3';
+  GameGlobal.UI.onAction('game_back');
+  GameGlobal.UI.onAction('menu_start');
+  check(GameGlobal.Main.game && GameGlobal.Main.game.levelId === 3, '最新解锁=3 时直接进入第 3 关');
+  // 还原为第 1 关继续后续交互测试
+  memStore['look_unlocked'] = '1';
+  GameGlobal.UI.onAction('game_back');
+  GameGlobal.UI.onAction('menu_start');
+  check(GameGlobal.Main.game && GameGlobal.Main.game.levelId === 1, '还原后进入第 1 关');
 
   // 渲染游戏帧（多帧推进动画/粒子）
   for (let i = 0; i < 5; i++) {

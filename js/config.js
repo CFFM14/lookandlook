@@ -16,8 +16,8 @@ GameGlobal.TOP_BAR_H = 96;       // 顶部信息区高度（返回/关卡名/计
 GameGlobal.BOTTOM_BAR_H = 116;    // 底部工具按钮区高度
 GameGlobal.GRID_MARGIN_X = 12;    // 网格左右留白
 // 卡片重叠比例（仿原版 Cocos 负间距 -12/-26：卡片互相叠放，视觉紧凑）。
-// 0.18 ≈ 卡片边长 18% 被相邻卡片覆盖；连线的外围通道逻辑不受影响。
-GameGlobal.GRID_OVERLAP_RATIO = 0.18;
+// 0.12 ≈ 卡片边长 12% 被相邻卡片覆盖（比 0.18 略宽松一丁点）；连线的外围通道逻辑不受影响。
+GameGlobal.GRID_OVERLAP_RATIO = 0.12;
 
 /** 水果名称（与 images/fruit_01~12.png 一一对应） */
 GameGlobal.FRUIT_NAMES = [
@@ -25,7 +25,7 @@ GameGlobal.FRUIT_NAMES = [
   '草莓', '菠萝', '西瓜', '青苹果', '青葡萄', '香蕉'
 ];
 
-/** 6 个关卡配置（用户确认方案） */
+/** 6 个关卡配置（用户确认方案：1普通 → 2下坠 → 3上浮 → 4左移 → 5右移 → 6冰冻） */
 GameGlobal.LEVELS = [
   {
     id: 1, name: '水果初识', desc: '轻松入门，认识水果', difficulty: 1,
@@ -34,33 +34,33 @@ GameGlobal.LEVELS = [
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },
   {
-    id: 2, name: '经典果园', desc: '标准连连看，水果大丰收', difficulty: 1,
-    rows: 8, cols: 6, fruitTypeCount: 12,
-    gravity: null, frozenRatio: 0,
-    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
-  },
-  {
-    id: 3, name: '果果下坠', desc: '消除后水果会往下掉落哦', difficulty: 2,
+    id: 2, name: '果果下坠', desc: '消除后水果会往下掉落哦', difficulty: 1,
     rows: 8, cols: 6, fruitTypeCount: 8,
     gravity: 'down', frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },
   {
-    id: 4, name: '冰封之果', desc: '冰住的果子要点击两次才能消除', difficulty: 2,
-    rows: 6, cols: 5, fruitTypeCount: 6,
-    gravity: null, frozenRatio: 0.3,
+    id: 3, name: '果果上浮', desc: '消除后水果向上飘动', difficulty: 2,
+    rows: 8, cols: 6, fruitTypeCount: 8,
+    gravity: 'up', frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },
   {
-    id: 5, name: '左移风暴', desc: '消除后水果向左移动', difficulty: 3,
+    id: 4, name: '左移风暴', desc: '消除后水果向左移动', difficulty: 2,
     rows: 8, cols: 5, fruitTypeCount: 10,
     gravity: 'left', frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },
   {
-    id: 6, name: '终极挑战', desc: '重力+冰冻，双重考验！', difficulty: 3,
-    rows: 8, cols: 7, fruitTypeCount: 10,
-    gravity: 'down', frozenRatio: 0.2,
+    id: 5, name: '右移风暴', desc: '消除后水果向右移动', difficulty: 3,
+    rows: 8, cols: 5, fruitTypeCount: 10,
+    gravity: 'right', frozenRatio: 0,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  },
+  {
+    id: 6, name: '冰封之果', desc: '冰住的果子要点击两次才能消除', difficulty: 3,
+    rows: 7, cols: 6, fruitTypeCount: 10,
+    gravity: null, frozenRatio: 0.3,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },
 ];

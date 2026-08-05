@@ -35,7 +35,8 @@
     onAction: function (id) {
       switch (id) {
         case 'menu_start':
-          UI.startLevel(1);
+          // 从最新解锁的关卡开始（首次为第 1 关）
+          UI.startLevel(GameGlobal.Storage.getUnlockedLevels());
           break;
         case 'menu_levels':
           UI.showLevelSelect();

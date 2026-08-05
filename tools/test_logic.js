@@ -113,7 +113,7 @@ async function main() {
   {
     for (const lv of [1, 2, 3, 4, 5, 6]) {
       const game = new Game(lv);
-      const expectPairs = (lv === 1 ? 24 : lv === 2 ? 48 : lv === 3 ? 48 : lv === 4 ? 30 : lv === 5 ? 40 : 56) / 2;
+      const expectPairs = (lv === 1 ? 24 : lv === 2 ? 48 : lv === 3 ? 48 : lv === 4 ? 40 : lv === 5 ? 40 : 42) / 2;
       ok(game.remainingPairs === expectPairs, '第' + lv + '关 对数=' + expectPairs);
       const counts = {};
       let total = 0;
@@ -130,9 +130,9 @@ async function main() {
     }
   }
 
-  console.log('\n[3] 重力 down（第3关）');
+  console.log('\n[3] 重力 down（第2关）');
   {
-    const g = new Game(3);
+    const g = new Game(2);
     const R = g.rows, C = g.cols;
     // 模拟消除底部第 3、5 列各一格
     g.grid[R][3] = 0; g.cardNodes[R][3] = null;
@@ -158,30 +158,57 @@ async function main() {
     ok(bottomFull, '所有列底部无空洞');
   }
 
-  console.log('\n[4] 重力 left（第5关）');
+  console.log('\n[4] 重力 left（第4关）');
   {
-    const g = new Game(5);
+    const g = new Game(4);
     g.grid[3][1] = 0; g.cardNodes[3][1] = null;
-    g.grid[3][6] = 0; g.cardNodes[3][6] = null;
+    g.grid[3][g.cols] = 0; g.cardNodes[3][g.cols] = null;
     const moves = g.applyGravity();
     ok(g.grid[3][1] !== 0 && g.grid[3][2] !== 0, '第3行左侧被填充');
     ok(moves.some(m => m.fr === 3 && m.fc === 2 && m.tr === 3 && m.tc === 1), '第3行有左移动画');
     let rowFull = true;
-    for (let c = 1; c <= 6; c++) {
+    for (let c = 1; c <= g.cols; c++) {
       if (g.grid[3][c] === 0) {
-        for (let c2 = c + 1; c2 <= 6; c2++) if (g.grid[3][c2]) rowFull = false;
+        for (let c2 = c + 1; c2 <= g.cols; c2++) if (g.grid[3][c2]) rowFull = false;
         break;
       }
     }
     ok(rowFull, '第3行左侧无空洞');
   }
 
-  console.log('\n[5] 冰冻机制（第4关）');
+  console.log('\n[4b] 重力 up（第3关）');
   {
-    const g = new Game(4);
+    const g = new Game(3);
+    const R = g.rows, C = g.cols;
+    // 模拟消除顶部第 3、5 列各一格
+    g.grid[1][3] = 0; g.cardNodes[1][3] = null;
+    g.grid[1][5] = 0; g.cardNodes[1][5] = null;
+    const moves = g.applyGravity();
+    ok(g.grid[1][3] !== 0, '第3列顶部被填充');
+    ok(g.grid[1][5] !== 0, '第5列顶部被填充');
+    ok(moves.some(m => m.fc === 3 && m.tr === 1 && m.tc === 3), '第3列有上移动画');
+    let cnt = 0;
+    for (let r = 1; r <= R; r++) for (let c = 1; c <= C; c++) if (g.grid[r][c]) cnt++;
+    ok(cnt === R * C - 2, '上移后卡片数量守恒');
+    // 每列顶部无空洞
+    let topFull = true;
+    for (let c = 1; c <= C; c++) {
+      for (let r = 1; r <= R; r++) {
+        if (g.grid[r][c] === 0) {
+          for (let r2 = r + 1; r2 <= R; r2++) if (g.grid[r2][c]) topFull = false;
+          break;
+        }
+      }
+    }
+    ok(topFull, '所有列顶部无空洞');
+  }
+
+  console.log('\n[5] 冰冻机制（第6关）');
+  {
+    const g = new Game(6);
     const frozenCells = [];
     for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) if (g.frozen[r][c]) frozenCells.push([r, c]);
-    ok(frozenCells.length >= 5, '冰冻卡数量合理（约30%的9张，含不相邻约束）');
+    ok(frozenCells.length >= 5, '冰冻卡数量合理（约30%，含不相邻约束）');
     if (frozenCells.length) {
       const [fr, fc] = frozenCells[0];
       ok(g.cardNodes[fr][fc].state === 'frozen', '冰冻卡初始状态 frozen');
@@ -195,13 +222,13 @@ async function main() {
     await new Promise(r => setTimeout(r, 600));
     ok(g.isProcessing === false, '炸弹流程结束');
     const rem = g.remainingPairs;
-    ok(rem >= 0 && rem < 15, '炸弹后剩余对数合理');
+    ok(rem >= 0 && rem < 21, '炸弹后剩余对数合理');
   }
 
-  console.log('\n[6] 完整消除与胜利流程（第2关）');
+  console.log('\n[6] 完整消除与胜利流程（第1关·普通规则）');
   {
     winCalled = false;
-    const g = new Game(2);
+    const g = new Game(1);
     let guard = 0;
     while (g.remainingPairs > 0 && guard++ < 100) {
       let found = false;
@@ -229,14 +256,14 @@ async function main() {
     // 等待胜利回调：正常消除 450ms 记账 + 400ms 面板；死局清场最长 48张×50ms+400ms
     await new Promise(r => setTimeout(r, 3200));
     ok(g.remainingPairs === 0, '消除完所有对（含死局自动清场）');
-    ok(g.moves <= 24 && g.moves >= 1, '步数在合法范围');
+    ok(g.moves <= 12 && g.moves >= 1, '步数在合法范围（第1关 12 对）');
     ok(winCalled, '触发胜利（showWin 被调用）');
   }
 
-  console.log('\n[7] 重力关胜利流程（第3关）');
+  console.log('\n[7] 重力关胜利流程（第2关·下坠）');
   {
     winCalled = false;
-    const g = new Game(3);
+    const g = new Game(2);
     let guard = 0;
     while (g.remainingPairs > 0 && guard++ < 120) {
       let found = false;
