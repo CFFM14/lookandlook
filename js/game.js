@@ -189,13 +189,16 @@
     if (!this.selectedCard) {
       this.selectedCard = card;
       card.state = 'selected';
+      this.highlightCard(card, true);
     } else if (this.selectedCard === card) {
       card.state = 'normal';
+      this.highlightCard(card, false);
       this.selectedCard = null;
     } else {
       var first = this.selectedCard;
       this.isProcessing = true;
       card.state = 'selected';
+      this.highlightCard(card, true);
 
       var path = GameGlobal.PathChecker.canConnect(this.grid, this.rows, this.cols,
         first.r, first.c, card.r, card.c);
@@ -204,6 +207,20 @@
       } else {
         this.showMismatch(first, card);
       }
+    }
+  };
+
+  /**
+   * 选中/取消缩放动画（复刻原版 Cocos FruitCard.setHighlight）：
+   * 选中 → 弹到 1.18 再回落到 1.08 保持微大；取消 → 回到 1.0
+   */
+  Game.prototype.highlightCard = function (card, on) {
+    if (on) {
+      GameGlobal.Tween.to(card.visual, { scale: 1.18 }, 80, 'easeOut', function () {
+        GameGlobal.Tween.to(card.visual, { scale: 1.08 }, 60, 'easeOut');
+      });
+    } else {
+      GameGlobal.Tween.to(card.visual, { scale: 1 }, 100, 'easeOut');
     }
   };
 
@@ -275,6 +292,8 @@
     this._after(T.MISMATCH, function () {
       card1.state = 'normal';
       card2.state = 'normal';
+      self.highlightCard(card1, false);
+      self.highlightCard(card2, false);
       self.selectedCard = null;
       self.isProcessing = false;
     });
@@ -439,6 +458,7 @@
 
     if (this.selectedCard) {
       this.selectedCard.state = 'normal';
+      this.highlightCard(this.selectedCard, false);
       this.selectedCard = null;
     }
     this.isProcessing = true;
@@ -554,6 +574,7 @@
     }
     if (this.selectedCard) {
       this.selectedCard.state = 'normal';
+      this.highlightCard(this.selectedCard, false);
       this.selectedCard = null;
     }
     GameGlobal.SoundManager.play('click');

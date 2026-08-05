@@ -172,11 +172,16 @@
       var ctx = this.ctx;
       var m = Main.game.metrics;
       var v = card.visual;
-      var size = m.cw * v.scale;
+      var state = card.state;
+      // 绘制缩放：基础缩放(选中时由 Tween 驱动放大) × 提示闪烁脉冲（复刻原版 Cocos 闪烁特效）
+      var drawScale = v.scale;
+      if (state === 'hintFlash' && card.flashT) {
+        drawScale *= 1 + 0.1 * Math.sin((now - card.flashT) / 150 * Math.PI * 2);
+      }
+      var size = m.cw * drawScale;
       if (size <= 1) return;
 
       var x = v.x - size / 2, y = v.y - size / 2;
-      var state = card.state;
 
       // 抖动偏移（mismatch）
       var dx = 0;
@@ -214,47 +219,8 @@
         ctx.restore();
       }
 
-      // 选中/提示高亮：紧凑四角角标（小而精致，贴合任意形状底座，不再画整圈外框）
-      if (state === 'selected' || state === 'hintFlash') {
-        var pulse = 1;
-        if (state === 'hintFlash' && card.flashT) {
-          pulse = 1 + 0.1 * Math.sin((now - card.flashT) / 150 * Math.PI * 2);
-        }
-        var isBlue = state === 'hintFlash';
-        var mainC = isBlue ? '#4DA6FF' : '#FFB300';
-        var lineW = Math.max(2, size * 0.035);
-        var gx = v.x - size * pulse / 2, gy = v.y - size * pulse / 2;
-        var gs = size * pulse;
-        var corner = Math.max(5, gs * 0.09); // 角标长度（更小）
-
-        ctx.save();
-        ctx.strokeStyle = mainC;
-        ctx.lineWidth = lineW;
-        ctx.lineCap = 'round';
-        // 轻微光晕（贴边微光）
-        ctx.shadowColor = isBlue ? 'rgba(77,166,255,0.6)' : 'rgba(255,179,0,0.65)';
-        ctx.shadowBlur = 4;
-        ctx.globalAlpha = 0.95;
-        ctx.beginPath();
-        // 左上
-        ctx.moveTo(gx + 1, gy + corner);
-        ctx.lineTo(gx + 1, gy + 1);
-        ctx.lineTo(gx + corner, gy + 1);
-        // 右上
-        ctx.moveTo(gx + gs - corner, gy + 1);
-        ctx.lineTo(gx + gs - 1, gy + 1);
-        ctx.lineTo(gx + gs - 1, gy + corner);
-        // 右下
-        ctx.moveTo(gx + gs - 1, gy + gs - corner);
-        ctx.lineTo(gx + gs - 1, gy + gs - 1);
-        ctx.lineTo(gx + gs - corner, gy + gs - 1);
-        // 左下
-        ctx.moveTo(gx + corner, gy + gs - 1);
-        ctx.lineTo(gx + 1, gy + gs - 1);
-        ctx.lineTo(gx + 1, gy + gs - corner);
-        ctx.stroke();
-        ctx.restore();
-      }
+      // 选中/提示不再绘制任何框或角标：选中靠视觉缩放(highlightCard Tween)，
+      // 提示靠上方的 drawScale 闪烁脉冲（均复刻原版 Cocos 特效）
     },
 
     // ══════════════════════════════════════════════
