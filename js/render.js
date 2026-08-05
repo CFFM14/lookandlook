@@ -214,37 +214,54 @@
         ctx.restore();
       }
 
-      // 外框 / 光晕（选中/提示）
-      var borderColor = null;
-      var lineW = Math.max(2, size * 0.05);
+      // 选中/提示高亮：四角角标 + 外发光（贴合任意形状的水果底座，不用整圈描边）
       if (state === 'selected' || state === 'hintFlash') {
-        if (state === 'selected') {
-          borderColor = '#FFB300';
-          ctx.shadowColor = 'rgba(255, 179, 0, 0.9)';
-          ctx.shadowBlur = 12;
-        } else {
-          borderColor = '#4DA6FF';
-          ctx.shadowColor = 'rgba(77, 166, 255, 0.9)';
-          ctx.shadowBlur = 10;
+        var pulse = 1;
+        if (state === 'hintFlash' && card.flashT) {
+          pulse = 1 + 0.12 * Math.sin((now - card.flashT) / 150 * Math.PI * 2);
         }
-      }
-      if (borderColor) {
-        this.roundRectPath(x, y, size, size, Math.max(4, size * 0.1));
-        ctx.strokeStyle = borderColor;
+        var isBlue = state === 'hintFlash';
+        var mainC = isBlue ? '#4DA6FF' : '#FFB300';
+        var lineW = Math.max(3, size * 0.06);
+
+        // 外发光圆角（shadowBlur 柔和光晕，不要求贴合底座边缘）
+        var gx = v.x - size * pulse / 2, gy = v.y - size * pulse / 2;
+        var gs = size * pulse;
+        ctx.save();
+        ctx.shadowColor = isBlue ? 'rgba(77,166,255,0.85)' : 'rgba(255,179,0,0.9)';
+        ctx.shadowBlur = 16;
+        this.roundRectPath(gx, gy, gs, gs, Math.max(4, gs * 0.1));
+        ctx.strokeStyle = mainC;
         ctx.lineWidth = lineW;
         ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
+        ctx.restore();
 
-      // hintFlash 蓝边脉冲
-      if (state === 'hintFlash' && card.flashT) {
-        var pulse = 1 + 0.12 * Math.sin((now - card.flashT) / 150 * Math.PI * 2);
-        // 叠加一层光晕圆角
-        var px = v.x - size * pulse / 2, py = v.y - size * pulse / 2;
-        this.roundRectPath(px, py, size * pulse, size * pulse, Math.max(4, size * 0.1));
-        ctx.strokeStyle = 'rgba(77, 166, 255, 0.55)';
-        ctx.lineWidth = lineW * 0.8;
+        // 四角 L 形角标（明确"被选中"）
+        var corner = Math.max(9, gs * 0.22);
+        ctx.save();
+        ctx.strokeStyle = mainC;
+        ctx.lineWidth = lineW;
+        ctx.lineCap = 'round';
+        ctx.globalAlpha = 0.95;
+        ctx.beginPath();
+        // 左上
+        ctx.moveTo(gx + 1, gy + corner);
+        ctx.lineTo(gx + 1, gy + 1);
+        ctx.lineTo(gx + corner, gy + 1);
+        // 右上
+        ctx.moveTo(gx + gs - corner, gy + 1);
+        ctx.lineTo(gx + gs - 1, gy + 1);
+        ctx.lineTo(gx + gs - 1, gy + corner);
+        // 右下
+        ctx.moveTo(gx + gs - 1, gy + gs - corner);
+        ctx.lineTo(gx + gs - 1, gy + gs - 1);
+        ctx.lineTo(gx + gs - corner, gy + gs - 1);
+        // 左下
+        ctx.moveTo(gx + corner, gy + gs - 1);
+        ctx.lineTo(gx + 1, gy + gs - 1);
+        ctx.lineTo(gx + 1, gy + gs - corner);
         ctx.stroke();
+        ctx.restore();
       }
     },
 
