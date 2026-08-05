@@ -31,7 +31,7 @@ global.wx = {
     width: 780, height: 1387, // 模拟加载完成后的背景图尺寸
     set src(v) { if (this.onload) setTimeout(this.onload, 0); },
   }),
-  onTouchStart() {}, onTouchEnd() {},
+  onTouchStart() {}, onTouchMove() {}, onTouchEnd() {},
   getStorageSync: (k) => (memStore[k] !== undefined ? memStore[k] : ''),
   setStorageSync: (k, v) => { memStore[k] = v; },
   createInnerAudioContext: () => ({
@@ -73,7 +73,7 @@ async function main() {
   check(typeof GameGlobal.PathChecker === 'object', 'PathChecker 已挂载');
   check(typeof GameGlobal.Game === 'function', 'Game 类已挂载');
   check(typeof GameGlobal.Main === 'object', 'Main 已挂载');
-  check(GameGlobal.LEVELS.length === 10, '10 个关卡配置');
+  check(GameGlobal.LEVELS.length === 16, '16 个关卡配置');
 
   await waitReady();
   console.log('[B] 启动');

@@ -29,11 +29,14 @@
 // ── mock 微信环境（浏览器预览用） ──────────────
 window.GameGlobal = {};
 var memStore = { 'look_best_1': { moves: 6, elapsed: 35 }, 'look_unlocked': '2' };
+var touchHandlers = {};
 var wx = {
   getSystemInfoSync: function () { return { windowWidth: 390, windowHeight: 844, pixelRatio: 2 }; },
   createCanvas: function () { return document.getElementById('game'); },
   createImage: function () { return new Image(); },
-  onTouchStart: function () {}, onTouchEnd: function () {},
+  onTouchStart: function (fn) { touchHandlers.start = fn; },
+  onTouchMove: function (fn) { touchHandlers.move = fn; },
+  onTouchEnd: function (fn) { touchHandlers.end = fn; },
   getStorageSync: function (k) { return memStore[k] !== undefined ? memStore[k] : ''; },
   setStorageSync: function (k, v) { memStore[k] = v; },
   createInnerAudioContext: function () { return { stop: function(){}, play: function(){}, seek: function(){}, src: '', volume: 1 }; },
@@ -74,6 +77,33 @@ function showPage(page) {
 (function wait() {
   if (GameGlobal.Main && GameGlobal.Main._ready) showPage('win');
   else setTimeout(wait, 100);
+})();
+
+// ── 鼠标模拟触摸（浏览器里也能点按钮 / 拖动滚动关卡列表） ──
+(function () {
+  var canvas = document.getElementById('game');
+  var down = false;
+  function pos(e) {
+    var r = canvas.getBoundingClientRect();
+    return {
+      clientX: (e.clientX - r.left) * 390 / r.width,
+      clientY: (e.clientY - r.top) * 844 / r.height,
+    };
+  }
+  function mk(p) {
+    return { touches: [{ clientX: p.clientX, clientY: p.clientY }], changedTouches: [{ clientX: p.clientX, clientY: p.clientY }] };
+  }
+  canvas.addEventListener('mousedown', function (e) {
+    down = true;
+    if (touchHandlers.start) touchHandlers.start(mk(pos(e)));
+  });
+  window.addEventListener('mousemove', function (e) {
+    if (down && touchHandlers.move) touchHandlers.move(mk(pos(e)));
+  });
+  window.addEventListener('mouseup', function (e) {
+    if (down && touchHandlers.end) touchHandlers.end(mk(pos(e)));
+    down = false;
+  });
 })();
 </script>
 </body>

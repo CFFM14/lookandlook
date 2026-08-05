@@ -89,7 +89,9 @@
     buttonBounds: [],
     pressedId: null,
 
+    levelScrollY: 0, // 关卡选择页列表滚动偏移（设计坐标，≤0）
     _touchStart: null,
+    _touchMoved: false,
     _ready: false,
 
     init: function () {
@@ -153,8 +155,23 @@
         var t = e.touches && e.touches[0];
         if (!t) return;
         self._touchStart = { x: t.clientX, y: t.clientY };
+        self._touchMoved = false;
         var hit = self.hitButton(t.clientX, t.clientY);
         self.pressedId = hit ? hit : null;
+      });
+      wx.onTouchMove && wx.onTouchMove(function (e) {
+        var t = e.touches && e.touches[0];
+        if (!t || !self._touchStart) return;
+        if (self.page === 'levels') {
+          self._touchMoved = true;
+          self.pressedId = null;
+          var d = (t.clientY - self._touchStart.y) / self.scale;
+          var scrollMax = GameGlobal.Renderer.getLevelListMetrics().scrollMax;
+          if (scrollMax > 0) {
+            self.levelScrollY = Math.max(-scrollMax, Math.min(0, self.levelScrollY + d));
+          }
+          self._touchStart.y = t.clientY;
+        }
       });
       wx.onTouchEnd(function (e) {
         var t = e.changedTouches && e.changedTouches[0];
@@ -163,6 +180,7 @@
         var dy = t.clientY - self._touchStart.y;
         self._touchStart = null;
         self.pressedId = null;
+        if (self._touchMoved) return; // 滑动过列表则不算点击
         if (dx * dx + dy * dy > 1600) return; // 滑动超过 40px 视为滑动，不触发
         self.handleTap(t.clientX, t.clientY);
       });

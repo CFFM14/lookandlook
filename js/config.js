@@ -87,6 +87,42 @@ GameGlobal.LEVELS = [
     gravity: 'right', frozenRatio: 0.3,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },
+  {
+    id: 11, name: '寒潮下坠', desc: '更冷的坠落，更厚的冰', difficulty: 4,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'down', frozenRatio: 0.35,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  },
+  {
+    id: 12, name: '寒潮上浮', desc: '冰晶上飘，寒意逼人', difficulty: 4,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'up', frozenRatio: 0.35,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  },
+  {
+    id: 13, name: '左移寒潮', desc: '寒潮向左席卷而来', difficulty: 4,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'left', frozenRatio: 0.35,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  },
+  {
+    id: 14, name: '右移寒潮', desc: '右移 + 深冻，寸步难行', difficulty: 5,
+    rows: 8, cols: 6, fruitTypeCount: 12,
+    gravity: 'right', frozenRatio: 0.4,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  },
+  {
+    id: 15, name: '极地冰牢', desc: '九层冰墙，冰封挑战', difficulty: 5,
+    rows: 9, cols: 6, fruitTypeCount: 10,
+    gravity: 'down', frozenRatio: 0.4,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  },
+  {
+    id: 16, name: '万果归一', desc: '终极冰封王座，最后的试炼！', difficulty: 5,
+    rows: 9, cols: 6, fruitTypeCount: 12,
+    gravity: 'right', frozenRatio: 0.4,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  },
 ];
 
 GameGlobal.TOTAL_LEVELS = GameGlobal.LEVELS.length;

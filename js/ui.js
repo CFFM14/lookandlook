@@ -16,6 +16,7 @@
     /** 显示关卡选择 */
     showLevelSelect: function () {
       Main.page = 'levels';
+      Main.levelScrollY = 0;
       Main.game = null;
     },
 
