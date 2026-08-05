@@ -214,34 +214,26 @@
         ctx.restore();
       }
 
-      // 选中/提示高亮：四角角标 + 外发光（贴合任意形状的水果底座，不用整圈描边）
+      // 选中/提示高亮：紧凑四角角标（小而精致，贴合任意形状底座，不再画整圈外框）
       if (state === 'selected' || state === 'hintFlash') {
         var pulse = 1;
         if (state === 'hintFlash' && card.flashT) {
-          pulse = 1 + 0.12 * Math.sin((now - card.flashT) / 150 * Math.PI * 2);
+          pulse = 1 + 0.1 * Math.sin((now - card.flashT) / 150 * Math.PI * 2);
         }
         var isBlue = state === 'hintFlash';
         var mainC = isBlue ? '#4DA6FF' : '#FFB300';
-        var lineW = Math.max(3, size * 0.06);
-
-        // 外发光圆角（shadowBlur 柔和光晕，不要求贴合底座边缘）
+        var lineW = Math.max(2.5, size * 0.045);
         var gx = v.x - size * pulse / 2, gy = v.y - size * pulse / 2;
         var gs = size * pulse;
-        ctx.save();
-        ctx.shadowColor = isBlue ? 'rgba(77,166,255,0.85)' : 'rgba(255,179,0,0.9)';
-        ctx.shadowBlur = 16;
-        this.roundRectPath(gx, gy, gs, gs, Math.max(4, gs * 0.1));
-        ctx.strokeStyle = mainC;
-        ctx.lineWidth = lineW;
-        ctx.stroke();
-        ctx.restore();
+        var corner = Math.max(6, gs * 0.14); // 角标长度（缩小）
 
-        // 四角 L 形角标（明确"被选中"）
-        var corner = Math.max(9, gs * 0.22);
         ctx.save();
         ctx.strokeStyle = mainC;
         ctx.lineWidth = lineW;
         ctx.lineCap = 'round';
+        // 轻微光晕（柔和、不扩散成大框）
+        ctx.shadowColor = isBlue ? 'rgba(77,166,255,0.7)' : 'rgba(255,179,0,0.75)';
+        ctx.shadowBlur = 6;
         ctx.globalAlpha = 0.95;
         ctx.beginPath();
         // 左上
