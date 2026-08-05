@@ -15,7 +15,9 @@ GameGlobal.DESIGN_H = 844;
 GameGlobal.TOP_BAR_H = 96;       // 顶部信息区高度（返回/关卡名/计时）
 GameGlobal.BOTTOM_BAR_H = 116;    // 底部工具按钮区高度
 GameGlobal.GRID_MARGIN_X = 12;    // 网格左右留白
-GameGlobal.GRID_GAP = 8;          // 卡片间隙
+// 卡片间隙：0 = 紧贴排列（连连看规则中卡片互相紧挨，避免用户误以为"只有贴着的才能消"）。
+// 原版 Cocos 配置即为负间距（重叠），此处贴合即可；连线判定与视觉间距无关。
+GameGlobal.GRID_GAP = 0;
 
 /** 水果名称（与 images/fruit_01~12.png 一一对应） */
 GameGlobal.FRUIT_NAMES = [
