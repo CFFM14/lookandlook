@@ -172,13 +172,7 @@
     var card = this.cardNodes[r][c];
     if (!card || card.state === 'eliminated') return;
 
-    // 单例卡不可点击（奇数张多出的 1 张，剩余对清完后自动消除）
-    if (this.singletonSet.has(r + ',' + c)) {
-      GameGlobal.Main.showToast('这张水果数量是奇数，无法配对');
-      return;
-    }
-
-    // 冰冻卡可正常选中参与配对（冰块保留，配对消除时才碎裂——见 eliminatePair）
+    // 所有卡片（含奇数残留卡）均可正常选中配对；最后多出的单张在剩余对清完后自动消除
     if (!this.selectedCard) {
       this.selectedCard = card;
       card.state = 'selected';
@@ -638,10 +632,8 @@
     for (var r = 1; r <= this.rows; r++) {
       for (var c = 1; c <= this.cols; c++) {
         var card = this.cardNodes[r][c];
-        // 排除已消除卡与单例卡（单例自动清除，不参与提示）
-        if (card && card.state !== 'eliminated' && !this.singletonSet.has(r + ',' + c)) {
-          cards.push(card);
-        }
+        // 所有未消除卡都可配对（含奇数残留卡）
+        if (card && card.state !== 'eliminated') cards.push(card);
       }
     }
 
@@ -688,15 +680,13 @@
   //  胜利检查 & 死局 & 单例
   // ══════════════════════════════════════════════
 
-  /** 是否至少存在一对可连接的相同水果（冰冻卡视作普通卡；单例卡不可点选，不参与判定） */
+  /** 是否至少存在一对可连接的相同水果（冰冻卡视作普通卡；所有未消除卡都可配对） */
   Game.prototype.hasValidMove = function () {
     var cards = [];
     for (var r = 1; r <= this.rows; r++) {
       for (var c = 1; c <= this.cols; c++) {
         var card = this.cardNodes[r][c];
-        if (card && card.state !== 'eliminated' && !this.singletonSet.has(r + ',' + c)) {
-          cards.push(card);
-        }
+        if (card && card.state !== 'eliminated') cards.push(card);
       }
     }
     var byType = {};

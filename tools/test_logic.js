@@ -404,13 +404,11 @@ async function main() {
         for (let c1 = 1; c1 <= g.cols; c1++) {
           const card = g.cardNodes[r1][c1];
           if (!card || card.state === 'eliminated') continue;
-          if (g.singletonSet.has(r1 + ',' + c1)) continue; // 单例卡不可配（游戏内点击会被拒绝）
           for (let r2 = 1; r2 <= g.rows; r2++) {
             for (let c2 = 1; c2 <= g.cols; c2++) {
               if (r1 === r2 && c1 === c2) continue;
               const c2card = g.cardNodes[r2][c2];
               if (!c2card || c2card.state === 'eliminated') continue;
-              if (g.singletonSet.has(r2 + ',' + c2)) continue;
               if (g.grid[r1][c1] !== g.grid[r2][c2]) continue;
               if (PathChecker.canConnect(g.grid, g.rows, g.cols, r1, c1, r2, c2)) {
                 g.onTapCard(r1, c1);
