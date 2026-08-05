@@ -211,11 +211,35 @@ async function main() {
     ok(frozenCells.length >= 5, '冰冻卡数量合理（约30%，含不相邻约束）');
     if (frozenCells.length) {
       const [fr, fc] = frozenCells[0];
-      ok(g.cardNodes[fr][fc].state === 'frozen', '冰冻卡初始状态 frozen');
-      g.onTapCard(fr, fc); // mock Tween 同步解冻
-      ok(g.frozen[fr][fc] === 0, '点击后解冻');
-      ok(g.cardNodes[fr][fc].state === 'normal', '解冻后状态 normal');
-      ok(g.isProcessing === false, '解冻完成后解锁输入');
+      ok(g.frozen[fr][fc] === 1, '冰冻卡带冰层标记');
+      ok(g.cardNodes[fr][fc].visual.iceAlpha === 1, '冰冻卡冰层可见');
+      // 点击冰冻卡：正常选中，冰块保留（不提前解冻）
+      g.onTapCard(fr, fc);
+      ok(g.cardNodes[fr][fc].state === 'selected', '点击后选中');
+      ok(g.frozen[fr][fc] === 1, '选中后冰块仍保留');
+      // 找同类型可连接配对 → 配对消除 → 冰层消失
+      const type = g.cardNodes[fr][fc].type;
+      let pair = null;
+      outer2:
+      for (let r2 = 1; r2 <= g.rows; r2++) {
+        for (let c2 = 1; c2 <= g.cols; c2++) {
+          if (r2 === fr && c2 === fc) continue;
+          const c2card = g.cardNodes[r2][c2];
+          if (!c2card || c2card.type !== type) continue;
+          if (PathChecker.canConnect(g.grid, g.rows, g.cols, fr, fc, r2, c2)) {
+            pair = { r: r2, c: c2 };
+            break outer2;
+          }
+        }
+      }
+      if (pair) {
+        g.onTapCard(pair.r, pair.c);
+        await new Promise(r => setTimeout(r, 600));
+        ok(g.frozen[fr][fc] === 0, '配对消除后冰层消失');
+        ok(!g.cardNodes[fr][fc], '冰冻卡已随配对消除');
+      } else {
+        console.log('  (随机布局未找到可连配对，跳过该子项)');
+      }
     }
     // 炸弹直接炸冰冻卡（不崩溃且记账正确）
     g.useBomb();

@@ -147,7 +147,8 @@
       this.frozen[r][c] = 1;
       var card = this.cardNodes[r][c];
       if (card) {
-        card.state = 'frozen';
+        // 冰层只是视觉效果：卡片状态保持 normal，可正常选中参与配对；
+        // 冰块在配对消除时碎裂消失（见 eliminatePair）
         card.visual.iceAlpha = 1;
       }
       count++;
@@ -162,7 +163,7 @@
   };
 
   // ══════════════════════════════════════════════
-  //  点击处理（含冰冻解冻分支）
+  //  点击处理
   // ══════════════════════════════════════════════
 
   /** 玩家点击 (r, c) 卡片 */
@@ -171,21 +172,7 @@
     var card = this.cardNodes[r][c];
     if (!card || card.state === 'eliminated') return;
 
-    // 第一层：冰冻 → 解冻（双重解锁）
-    if (this.frozen[r][c] === 1) {
-      this.isProcessing = true;
-      this.frozen[r][c] = 0;
-      card.state = 'thawing';
-      GameGlobal.SoundManager.play('thaw');
-      GameGlobal.Renderer.spawnIceShards(this.logicToPixel(r, c).x, this.logicToPixel(r, c).y);
-      var self = this;
-      GameGlobal.Tween.to(card.visual, { iceAlpha: 0 }, T.THAW, 'linear', function () {
-        card.state = 'normal';
-        self.isProcessing = false;
-      });
-      return;
-    }
-
+    // 冰冻卡可正常选中参与配对（冰块保留，配对消除时才碎裂——见 eliminatePair）
     if (!this.selectedCard) {
       this.selectedCard = card;
       card.state = 'selected';
@@ -237,28 +224,44 @@
     this.singletonSet.delete(pos1);
     this.singletonSet.delete(pos2);
 
+    // 记录消除前冰层状态（冰块随配对消除一起碎裂消失）
+    var wasFrozen1 = this.frozen[card1.r][card1.c] === 1;
+    var wasFrozen2 = this.frozen[card2.r][card2.c] === 1;
+
     this.grid[card1.r][card1.c] = 0;
     this.grid[card2.r][card2.c] = 0;
     this.cardNodes[card1.r][card1.c] = null;
     this.cardNodes[card2.r][card2.c] = null;
+    if (wasFrozen1) this.frozen[card1.r][card1.c] = 0;
+    if (wasFrozen2) this.frozen[card2.r][card2.c] = 0;
 
     // 连线（金色）+ 音效马上响
     this.connectionLine = { points: path, color: 'gold', timeLeft: T.ELIM_LINE };
     GameGlobal.SoundManager.play('elim');
 
-    // 第一张消失 + 烟花
+    // 第一张消失 + 烟花（若是冰卡：冰屑粒子 + 冰裂音效 + 冰层淡出）
     var p1 = this.logicToPixel(card1.r, card1.c);
     card1.state = 'eliminating';
     GameGlobal.Renderer.spawnFirework(p1.x, p1.y);
+    if (wasFrozen1) {
+      GameGlobal.SoundManager.play('thaw');
+      GameGlobal.Renderer.spawnIceShards(p1.x, p1.y);
+      GameGlobal.Tween.to(card1.visual, { iceAlpha: 0 }, 180, 'linear');
+    }
     GameGlobal.Tween.to(card1.visual, { scale: 0 }, T.ELIM_SCALE, 'easeIn', function () {
       card1.state = 'eliminated';
     });
 
-    // 第二张延迟 0.1s
+    // 第二张延迟 0.1s（若是冰卡：同样冰裂效果）
     this._after(100, function () {
       var p2 = self.logicToPixel(card2.r, card2.c);
       card2.state = 'eliminating';
       GameGlobal.Renderer.spawnFirework(p2.x, p2.y);
+      if (wasFrozen2) {
+        GameGlobal.SoundManager.play('thaw');
+        GameGlobal.Renderer.spawnIceShards(p2.x, p2.y);
+        GameGlobal.Tween.to(card2.visual, { iceAlpha: 0 }, 180, 'linear');
+      }
       GameGlobal.Tween.to(card2.visual, { scale: 0 }, T.ELIM_SCALE, 'easeIn', function () {
         card2.state = 'eliminated';
       });
@@ -584,28 +587,16 @@
   //  💡 提示
   // ══════════════════════════════════════════════
 
-  /** 找第一对可连接的配对（跳过冰冻卡），画蓝色连线并闪烁 */
+  /** 找第一对可连接的配对（冰冻卡同样参与配对），画蓝色连线并闪烁 */
   Game.prototype.showHint = function () {
     if (this.isProcessing) return;
 
     var cards = [];
-    var frozenCount = 0;
     for (var r = 1; r <= this.rows; r++) {
       for (var c = 1; c <= this.cols; c++) {
         var card = this.cardNodes[r][c];
-        if (!card || card.state === 'eliminated') continue;
-        if (this.frozen[r][c] === 1) {
-          frozenCount++;
-        } else {
-          cards.push(card);
-        }
+        if (card && card.state !== 'eliminated') cards.push(card);
       }
-    }
-
-    // 全部都是冰冻卡：先解冻
-    if (!cards.length && frozenCount > 0) {
-      GameGlobal.Main.showToast('先点击解冻被冰住的水果吧');
-      return;
     }
 
     var byType = {};

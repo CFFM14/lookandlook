@@ -197,9 +197,9 @@
         ctx.drawImage(img, x, y, size, size);
       }
 
-      // 冰层（frozen / thawing 用 iceAlpha 控制，直接叠在水果图上）
+      // 冰层（frozen 卡 iceAlpha=1 常驻，配对消除时 Tween 淡出，直接叠在水果图上）
       var iceAlpha = v.iceAlpha;
-      if ((state === 'frozen' || state === 'thawing') && iceAlpha > 0.01) {
+      if (iceAlpha > 0.01) {
         ctx.save();
         ctx.globalAlpha = Math.min(1, iceAlpha);
         ctx.fillStyle = 'rgba(180, 225, 255, 0.62)';
