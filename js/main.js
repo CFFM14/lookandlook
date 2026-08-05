@@ -213,10 +213,10 @@
     },
 
     /** 显示胜利结算（game.onWin 调用） */
-    showWin: function (levelId, moves, elapsed) {
+    showWin: function (levelId, moves, elapsed, coinsEarned) {
       // 守卫：胜利回调延迟弹出，若玩家已离开游戏页（返回/切关）则忽略
       if (this.page !== 'game') return;
-      this.winData = { levelId: levelId, moves: moves, elapsed: elapsed };
+      this.winData = { levelId: levelId, moves: moves, elapsed: elapsed, coinsEarned: coinsEarned || 0 };
       this.winShownAt = Date.now();
       this.page = 'win';
     },
@@ -253,6 +253,7 @@
       switch (this.page) {
         case 'menu': r.renderMenu(); break;
         case 'levels': r.renderLevelSelect(); break;
+        case 'shop': r.renderShop(); break;
         case 'game': r.renderGame(); break;
         case 'win': r.renderWin(); break;
       }

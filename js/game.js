@@ -518,10 +518,14 @@
   //  💣 炸弹
   // ══════════════════════════════════════════════
 
-  /** 随机炸掉一块 3×3 区域（冰冻卡直接炸，无需解冻） */
+  /** 随机炸掉一块 3×3 区域（冰冻卡直接炸，无需解冻；消耗 1 次炸弹） */
   Game.prototype.useBomb = function () {
     if (this.isProcessing) return;
     if (this.remainingPairs <= 0 || !this.hasCardsLeft()) return;
+    if (!GameGlobal.Storage.useTool('bomb')) {
+      GameGlobal.Main.showToast('炸弹次数不足，去商店购买吧');
+      return;
+    }
 
     var centerR = Math.floor(Math.random() * (this.rows - 2)) + 2;
     var centerC = Math.floor(Math.random() * (this.cols - 2)) + 2;
@@ -595,6 +599,10 @@
   /** 剩余卡片的水果类型重新洗牌（位置不变，冰冻跟随） */
   Game.prototype.shuffleCards = function () {
     if (this.isProcessing) return;
+    if (!GameGlobal.Storage.useTool('shuffle')) {
+      GameGlobal.Main.showToast('打乱次数不足，去商店购买吧');
+      return;
+    }
     var cards = [];
     for (var r = 1; r <= this.rows; r++) {
       for (var c = 1; c <= this.cols; c++) {
@@ -624,9 +632,13 @@
   //  💡 提示
   // ══════════════════════════════════════════════
 
-  /** 找第一对可连接的配对（冰冻卡同样参与配对），画蓝色连线并闪烁 */
+  /** 找第一对可连接的配对（冰冻卡同样参与配对），画蓝色连线并闪烁（消耗 1 次提示） */
   Game.prototype.showHint = function () {
     if (this.isProcessing) return;
+    if (!GameGlobal.Storage.useTool('hint')) {
+      GameGlobal.Main.showToast('提示次数不足，去商店购买吧');
+      return;
+    }
 
     var cards = [];
     for (var r = 1; r <= this.rows; r++) {
@@ -814,11 +826,17 @@
     GameGlobal.Renderer.spawnWinFireworks();
 
     var elapsed = this.getElapsed();
+    // 先判断是否首通（必须在 setBestScore 之前，否则最佳成绩已存在）
+    var firstClear = GameGlobal.Storage.isFirstClear(this.levelId);
     GameGlobal.Storage.setBestScore(this.levelId, this.moves, elapsed);
+
+    // 金币奖励：首次通关 100，重复通关 20
+    var coinsEarned = firstClear ? GameGlobal.COINS_FIRST_CLEAR : GameGlobal.COINS_REPEAT_CLEAR;
+    GameGlobal.Storage.addCoins(coinsEarned);
 
     var self = this;
     this._after(T.WIN_PANEL_DELAY, function () {
-      GameGlobal.Main.showWin(self.levelId, self.moves, elapsed);
+      GameGlobal.Main.showWin(self.levelId, self.moves, elapsed, coinsEarned);
     });
   };
 

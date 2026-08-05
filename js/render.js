@@ -387,20 +387,41 @@
     renderMenu: function () {
       this.drawBackground('bg_menu');
       var cx = GameGlobal.DESIGN_W / 2;
+      var ctx = this.ctx;
+
+      // 右上角金币
+      this.drawCoinBadge(GameGlobal.DESIGN_W - 14, 36, GameGlobal.Storage.getCoins());
 
       // 标题
       this.drawImageCentered('title_menu', cx, 250, 340, 260);
 
       // 开始游戏
-      this.drawTextButton(cx - 130, 420, 260, 76, '开始游戏', { id: 'menu_start', fontSize: 26 });
+      this.drawTextButton(cx - 130, 400, 260, 72, '开始游戏', { id: 'menu_start', fontSize: 26 });
       // 选择关卡
-      this.drawTextButton(cx - 130, 520, 260, 76, '选择关卡', { id: 'menu_levels', fontSize: 26 });
-      // 音效开关
+      this.drawTextButton(cx - 130, 492, 260, 72, '选择关卡', { id: 'menu_levels', fontSize: 26 });
+      // 商店
+      this.drawTextButton(cx - 130, 584, 260, 72, '🏪 商店', { id: 'menu_shop', fontSize: 24 });
+      // 音效开关（小按钮）
       var soundOn = Main.soundOn;
-      this.drawTextButton(cx - 130, 620, 260, 60,
-        '音效：' + (soundOn ? '开' : '关'), { id: 'menu_sound', fontSize: 20 });
+      this.drawTextButton(cx - 100, 676, 200, 48,
+        '音效：' + (soundOn ? '开' : '关'), { id: 'menu_sound', fontSize: 18 });
 
-      this.drawText('连连看 · 水果消消乐', cx, 760, 15, 'rgba(139,90,43,0.7)', 'center', false);
+      this.drawText('连连看 · 水果消消乐', cx, 800, 15, 'rgba(139,90,43,0.7)', 'center', false);
+    },
+
+    /** 金币徽章：金色圆角 + 🪙 + 数量 */
+    drawCoinBadge: function (rx, ry, coins) {
+      var ctx = this.ctx;
+      var text = '🪙 ' + coins;
+      var w = 34 + String(coins).length * 13;
+      var h = 34;
+      this.roundRectPath(rx - w, ry - h / 2, w, h, 17);
+      ctx.fillStyle = 'rgba(255, 240, 200, 0.95)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#E8B34B';
+      ctx.stroke();
+      this.drawText(text, rx - w / 2, ry + 1, 16, '#B8860B', 'center', true);
     },
 
     /** 关卡选择 */
@@ -468,6 +489,59 @@
       this.drawText('每关玩法不同，通关解锁下一关', cx, 820, 14, 'rgba(139,90,43,0.65)', 'center', false);
     },
 
+    /** 商店 */
+    renderShop: function () {
+      this.drawBackground('bg_menu');
+      var cx = GameGlobal.DESIGN_W / 2;
+      var ctx = this.ctx;
+      var coins = GameGlobal.Storage.getCoins();
+
+      this.drawTextButton(20, 44, 70, 40, '返回', { id: 'shop_back', fontSize: 16 });
+      this.drawText('🏪 商店', cx, 60, 30, '#8B5A2B', 'center', true);
+      this.drawCoinBadge(GameGlobal.DESIGN_W - 14, 44, coins);
+
+      var cardW = 168, cardH = 196, gapX = 16, gapY = 18;
+      var startX = (GameGlobal.DESIGN_W - cardW * 2 - gapX) / 2;
+      var startY = 110;
+      var toolIcons = { hint: '💡', shuffle: '🔀', bomb: '💣' };
+
+      for (var i = 0; i < GameGlobal.SHOP_ITEMS.length; i++) {
+        var item = GameGlobal.SHOP_ITEMS[i];
+        var col = i % 2, row = Math.floor(i / 2);
+        var x = startX + col * (cardW + gapX);
+        var y = startY + row * (cardH + gapY);
+
+        // 商品卡底
+        this.roundRectPath(x, y, cardW, cardH, 16);
+        ctx.fillStyle = 'rgba(255, 246, 224, 0.95)';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#E8B34B';
+        ctx.stroke();
+
+        // 工具图标
+        this.drawText(toolIcons[item.tool] || '🎁', x + cardW / 2, y + 44, 42, '#8B5A2B', 'center', false);
+        // 名称
+        this.drawText(item.name, x + cardW / 2, y + 86, 20, '#5D4037', 'center', true);
+        // 描述
+        this.drawText(item.desc, x + cardW / 2, y + 112, 12, '#A08060', 'center', false);
+        // 价格
+        this.drawText('🪙 ' + item.coins, x + cardW / 2, y + 140, 20, '#B8860B', 'center', true);
+
+        // 购买按钮
+        var afford = coins >= item.coins;
+        this.drawTextButton(x + 20, y + 152, cardW - 40, 34, '购买', {
+          id: item.id, fontSize: 15,
+          gradient: afford ? ['#FFD66B', '#F2A93B'] : ['#D8D8D8', '#C0C0C0'],
+          border: afford ? '#D98A1A' : '#A8A8A8',
+          textColor: '#FFF',
+          radius: 12,
+        });
+      }
+
+      this.drawText('通关可获得金币，首次通关奖励更丰厚', cx, 820, 14, 'rgba(139,90,43,0.65)', 'center', false);
+    },
+
     /** 游戏页（withButtons=false 时仅绘制画面，用于结算页底层） */
     renderGame: function (withButtons) {
       this.drawBackground('bg_game');
@@ -500,18 +574,40 @@
       // 粒子
       this.drawParticles();
 
-      // 底部工具区（结算页不注册这些按钮）
+      // 底部工具区（结算页不注册这些按钮）——按钮加大 + 剩余次数角标 + 库存不足变灰
       if (withButtons) {
-        var btnSize = 64;
-        var bottomY = GameGlobal.DESIGN_H - 92;
-        if (game.cfg.hintEnabled) {
-          this.drawImageButton(GameGlobal.DESIGN_W / 2 - btnSize * 1.8, bottomY, btnSize, btnSize, 'btn_hint', 'btn_hint');
-        }
-        if (game.cfg.shuffleEnabled) {
-          this.drawImageButton(GameGlobal.DESIGN_W / 2 - btnSize / 2, bottomY, btnSize, btnSize, 'btn_shuffle', 'btn_shuffle');
-        }
-        if (game.cfg.bombEnabled) {
-          this.drawImageButton(GameGlobal.DESIGN_W / 2 + btnSize * 0.8, bottomY, btnSize, btnSize, 'btn_bomb', 'btn_bomb');
+        var btnSize = 78;
+        var bottomY = GameGlobal.DESIGN_H - 104;
+        var tools = GameGlobal.Storage.getTools();
+        var toolDefs = [
+          { key: 'hint', img: 'btn_hint', id: 'btn_hint', x: GameGlobal.DESIGN_W / 2 - btnSize * 1.9, enabled: game.cfg.hintEnabled },
+          { key: 'shuffle', img: 'btn_shuffle', id: 'btn_shuffle', x: GameGlobal.DESIGN_W / 2 - btnSize / 2, enabled: game.cfg.shuffleEnabled },
+          { key: 'bomb', img: 'btn_bomb', id: 'btn_bomb', x: GameGlobal.DESIGN_W / 2 + btnSize * 0.9, enabled: game.cfg.bombEnabled },
+        ];
+        for (var t = 0; t < toolDefs.length; t++) {
+          var td = toolDefs[t];
+          if (!td.enabled) continue;
+          var count = tools[td.key] || 0;
+          this.drawImageButton(td.x, bottomY, btnSize, btnSize, td.img, td.id);
+          if (count <= 0) {
+            // 库存不足：灰色蒙层
+            ctx.save();
+            ctx.fillStyle = 'rgba(90, 90, 100, 0.45)';
+            this.roundRectPath(td.x, bottomY, btnSize, btnSize, 12);
+            ctx.fill();
+            ctx.restore();
+          }
+          // 次数角标（右上角小圆）
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(td.x + btnSize - 4, bottomY + 4, 13, 0, Math.PI * 2);
+          ctx.fillStyle = count > 0 ? '#F5A623' : '#B0B0B0';
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#FFF';
+          ctx.stroke();
+          this.drawText(String(count), td.x + btnSize - 4, bottomY + 5, 12, '#FFF', 'center', true);
+          ctx.restore();
         }
       }
 
@@ -568,9 +664,9 @@
       var t = Math.min(1, (now - Main.winShownAt) / 450);
       var scale = easeOutBack(t);
 
-      var panelW = 330, panelH = 468;
+      var panelW = 330, panelH = 496;
       var px = cx - panelW / 2;
-      var py = (GameGlobal.DESIGN_H - panelH) / 2 - 10;
+      var py = (GameGlobal.DESIGN_H - panelH) / 2 - 6;
 
       ctx.save();
       ctx.translate(cx, py + panelH / 2);
@@ -619,22 +715,27 @@
       this.drawStar(px + panelW - 36, py + 30, 7, 'rgba(255,255,255,0.85)', 0.9);
       this.drawText('🎉 恭喜通关 🎉', cx, py + 46, 29, '#FFF', 'center', true);
 
-      // ── 关卡名 ──
+      // ── 关卡名 + 金币奖励 ──
       var winData = Main.winData;
       var lvCfg = GameGlobal.getLevelConfig(winData.levelId);
       this.drawText('第' + winData.levelId + '关 · ' + lvCfg.name, cx, py + 114, 20, '#8B5A2B', 'center', true);
+      // 金币奖励（金色高亮）
+      var coinsEarned = winData.coinsEarned || 0;
+      var isFirstClearText = coinsEarned >= GameGlobal.COINS_FIRST_CLEAR;
+      this.drawText((isFirstClearText ? '首次通关 ' : '') + '+🪙' + coinsEarned,
+        cx, py + 142, 22, '#D98A1A', 'center', true);
       // 分隔线
       ctx.strokeStyle = 'rgba(232, 169, 61, 0.5)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(px + 50, py + 134);
-      ctx.lineTo(px + panelW - 50, py + 134);
+      ctx.moveTo(px + 50, py + 162);
+      ctx.lineTo(px + panelW - 50, py + 162);
       ctx.stroke();
 
       // ── 成绩三卡 ──
       var cardW = 92, cardH = 102, cardGap = 14;
       var cardsX = cx - (cardW * 3 + cardGap * 2) / 2;
-      var cardsY = py + 146;
+      var cardsY = py + 174;
       var statDefs = [
         { label: '⏱ 用时', value: winData.elapsed + 's', sub: '' },
         { label: '🍀 步数', value: String(winData.moves), sub: '步' },
@@ -653,7 +754,7 @@
       // 新纪录徽章（金色旋转小标签）
       if (isBest) {
         ctx.save();
-        ctx.translate(px + panelW - 52, py + 128);
+        ctx.translate(px + panelW - 52, py + 150);
         ctx.rotate(0.12);
         var bW = 92, bH = 34;
         this.roundRectPath(-bW / 2, -bH / 2, bW, bH, 17);
@@ -674,18 +775,18 @@
       var btnW = panelW - 60;
       var bx = cx - btnW / 2;
       if (hasNext) {
-        this.drawTextButton(bx, py + 268, btnW, 58, '下一关 ▶', {
+        this.drawTextButton(bx, py + 292, btnW, 56, '下一关 ▶', {
           id: 'win_next', fontSize: 24,
           gradient: ['#FFD66B', '#F2A93B'], border: '#D98A1A', textColor: '#FFF',
           shadow: 'rgba(230,150,30,0.5)', bottomBar: '#D98A1A', radius: 16,
         });
       }
-      this.drawTextButton(bx, py + 336, btnW, 50, '再玩一次', {
+      this.drawTextButton(bx, py + 358, btnW, 48, '再玩一次', {
         id: 'win_replay', fontSize: 20,
         bg: '#FFFDF4', border: '#E8B34B', textColor: '#8B5A2B',
         shadow: 'rgba(180,140,60,0.25)', radius: 15,
       });
-      this.drawTextButton(bx, py + 398, btnW, 38, '返回首页', {
+      this.drawTextButton(bx, py + 418, btnW, 38, '返回首页', {
         id: 'win_home', fontSize: 16,
         bg: 'rgba(0,0,0,0)', border: 'transparent', textColor: '#A08050',
       });

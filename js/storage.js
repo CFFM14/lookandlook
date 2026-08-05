@@ -1,6 +1,6 @@
 /**
  * storage.js —— 存档封装（wx.setStorageSync）
- * 保存：关卡解锁进度、每关最佳成绩（步数+用时）、音效开关
+ * 保存：关卡解锁进度、每关最佳成绩（步数+用时）、音效开关、金币、工具库存
  */
 (function () {
   'use strict';
@@ -8,6 +8,8 @@
   var KEY_UNLOCK = 'look_unlocked';
   var KEY_BEST_PREFIX = 'look_best_';
   var KEY_SOUND = 'look_sound';
+  var KEY_COINS = 'look_coins';
+  var KEY_TOOLS = 'look_tools';
 
   var Storage = {
     /** 读取已解锁的关卡数（至少 1，最多 TOTAL_LEVELS） */
@@ -47,6 +49,76 @@
         return;
       }
       wx.setStorageSync(KEY_BEST_PREFIX + levelId, { moves: moves, elapsed: elapsed });
+    },
+
+    /** 该关是否首次通关（无最佳成绩 = 首通） */
+    isFirstClear: function (levelId) {
+      return this.getBestScore(levelId) === null;
+    },
+
+    // ══════════════════════════════════════════════
+    //  金币
+    // ══════════════════════════════════════════════
+
+    getCoins: function () {
+      try {
+        var v = parseInt(wx.getStorageSync(KEY_COINS), 10);
+        return isNaN(v) ? 0 : Math.max(0, v);
+      } catch (e) {
+        return 0;
+      }
+    },
+
+    addCoins: function (n) {
+      if (n <= 0) return;
+      wx.setStorageSync(KEY_COINS, String(this.getCoins() + n));
+    },
+
+    /** 尝试消费金币，成功返回 true */
+    spendCoins: function (n) {
+      var coins = this.getCoins();
+      if (coins < n) return false;
+      wx.setStorageSync(KEY_COINS, String(coins - n));
+      return true;
+    },
+
+    // ══════════════════════════════════════════════
+    //  工具库存（hint/shuffle/bomb 使用次数）
+    // ══════════════════════════════════════════════
+
+    /** 读取库存 {hint, shuffle, bomb}，缺失项补默认初始次数 */
+    getTools: function () {
+      var def = GameGlobal.TOOLS_DEFAULT || { hint: 3, shuffle: 2, bomb: 1 };
+      var tools = null;
+      try {
+        var raw = wx.getStorageSync(KEY_TOOLS);
+        if (raw && typeof raw === 'object') tools = raw;
+      } catch (e) {
+        tools = null;
+      }
+      var out = {};
+      for (var name in def) {
+        if (!def.hasOwnProperty(name)) continue;
+        var v = tools ? parseInt(tools[name], 10) : NaN;
+        out[name] = isNaN(v) ? def[name] : Math.max(0, v);
+      }
+      return out;
+    },
+
+    /** 增加工具次数 */
+    addTool: function (name, n) {
+      var tools = this.getTools();
+      tools[name] = (tools[name] || 0) + n;
+      wx.setStorageSync(KEY_TOOLS, tools);
+    },
+
+    /** 尝试消耗一次工具，成功返回 true */
+    useTool: function (name) {
+      var tools = this.getTools();
+      if ((tools[name] || 0) <= 0) return false;
+      tools[name]--;
+      wx.setStorageSync(KEY_TOOLS, tools);
+      return true;
     },
 
     /** 音效开关 */

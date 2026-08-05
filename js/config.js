@@ -112,3 +112,22 @@ GameGlobal.TIMING = {
   BOMB_TOTAL: 500,     // 炸弹流程
   WIN_PANEL_DELAY: 400,// 胜利面板出现延迟
 };
+
+// ══════════════════════════════════════════════
+//  经济系统（工具限次 / 金币 / 商店）
+// ══════════════════════════════════════════════
+
+/** 工具初始免费次数（新玩家赠送，用完去商店购买） */
+GameGlobal.TOOLS_DEFAULT = { hint: 3, shuffle: 2, bomb: 1 };
+
+/** 商店商品：{id, name, tool, amount, coins, desc} */
+GameGlobal.SHOP_ITEMS = [
+  { id: 'buy_hint_1', name: '提示 ×1', tool: 'hint', amount: 1, coins: 40, desc: '找到一对可消除的水果' },
+  { id: 'buy_hint_5', name: '提示 ×5', tool: 'hint', amount: 5, coins: 160, desc: '超值打包（省 40）' },
+  { id: 'buy_shuffle_1', name: '打乱 ×1', tool: 'shuffle', amount: 1, coins: 70, desc: '重新洗牌剩余水果' },
+  { id: 'buy_bomb_1', name: '炸弹 ×1', tool: 'bomb', amount: 1, coins: 110, desc: '随机炸掉 3×3 区域' },
+];
+
+/** 通关金币奖励：首次通关 100，重复通关 20 */
+GameGlobal.COINS_FIRST_CLEAR = 100;
+GameGlobal.COINS_REPEAT_CLEAR = 20;

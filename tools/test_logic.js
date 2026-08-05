@@ -9,9 +9,11 @@ const assert = require('assert');
 
 // ── mock 环境 ──────────────────────────────
 global.GameGlobal = {};
+// 内存存储（模拟 wx 存档，支持经济系统读写）
+const memStore = {};
 global.wx = {
-  getStorageSync: () => '',
-  setStorageSync: () => {},
+  getStorageSync: (k) => (memStore[k] !== undefined ? memStore[k] : ''),
+  setStorageSync: (k, v) => { memStore[k] = v; },
 };
 
 function noop() {}
@@ -39,6 +41,9 @@ require('../js/config.js');
 require('../js/pathChecker.js');
 require('../js/storage.js');
 const Game = require('../js/game.js');
+require('../js/ui.js'); // 商店购买等 UI 逻辑
+// 微信小游戏中 GameGlobal 即全局对象；Node 测试需手动桥接（ui.js 内使用裸标识符 Main）
+Object.assign(global, GameGlobal);
 const PathChecker = GameGlobal.PathChecker;
 
 let passed = 0;
@@ -432,6 +437,55 @@ async function main() {
       if (g.cardNodes[r][c] && g.cardNodes[r][c].state !== 'eliminated') left++;
     }
     ok(left === 0, '通关后棋盘清空');
+  }
+
+  console.log('\n[10] 经济系统（工具限次 / 金币 / 商店）');
+  {
+    const S = GameGlobal.Storage;
+    // 清空存档相关 key（不影响前面的关卡测试结果）
+    delete memStore['look_coins'];
+    delete memStore['look_tools'];
+
+    ok(S.getCoins() === 0, '金币初始 0');
+    const t0 = S.getTools();
+    ok(t0.hint === 3 && t0.shuffle === 2 && t0.bomb === 1, '工具初始库存 hint3/shuffle2/bomb1');
+
+    // 工具消耗
+    ok(S.useTool('hint'), '消耗 1 次提示成功');
+    ok(S.getTools().hint === 2, '提示库存减为 2');
+    S.useTool('hint');
+    S.useTool('hint');
+    ok(S.getTools().hint === 0, '提示库存归 0');
+    ok(!S.useTool('hint'), '库存 0 时消耗失败');
+    ok(S.getTools().bomb === 1, '炸弹库存不受影响');
+
+    // 金币增减与消费
+    S.addCoins(100);
+    ok(S.getCoins() === 100, '加 100 金币');
+    ok(S.spendCoins(60), '消费 60 成功');
+    ok(S.getCoins() === 40, '剩余 40');
+    ok(!S.spendCoins(100), '余额不足消费失败');
+
+    // 商店购买（走 UI.buyItem 真实路径）
+    memStore['look_coins'] = '200';
+    GameGlobal.UI.buyItem('buy_hint_5'); // 160
+    ok(S.getCoins() === 40, '购买提示×5 后金币 200-160=40');
+    ok(S.getTools().hint === 5, '购买后提示库存 0+5=5');
+    GameGlobal.UI.buyItem('buy_bomb_1'); // 110 > 40
+    ok(S.getCoins() === 40, '金币不足购买失败（金币不变）');
+    ok(S.getTools().bomb === 1, '炸弹库存不变');
+
+    // 通关金币：首通 100 / 重复 20（用关卡 2，前面用例已通第 1 关）
+    delete memStore['look_best_2'];
+    memStore['look_coins'] = '0';
+    const g1 = new Game(2);
+    g1.onWin(); // 首通
+    await new Promise(r => setTimeout(r, 500)); // 等 win 面板回调（mock noop）
+    ok(S.getCoins() === 100, '首通奖励 100 金币');
+    const g2 = new Game(2);
+    g2.onWin(); // 重复通关
+    await new Promise(r => setTimeout(r, 500));
+    ok(S.getCoins() === 120, '重复通关奖励 20（100+20）');
   }
 
   console.log('\n' + '='.repeat(40));

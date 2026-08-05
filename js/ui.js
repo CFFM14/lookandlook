@@ -1,6 +1,6 @@
 /**
  * ui.js —— 页面状态与按钮分发
- * 页面：menu（首页）/ levels（关卡选择）/ game（游戏）/ win（结算）
+ * 页面：menu（首页）/ levels（关卡选择）/ game（游戏）/ win（结算）/ shop（商店）
  */
 (function () {
   'use strict';
@@ -19,6 +19,12 @@
       Main.game = null;
     },
 
+    /** 显示商店 */
+    showShop: function () {
+      Main.page = 'shop';
+      Main.game = null;
+    },
+
     /** 进入某关 */
     startLevel: function (levelId) {
       var unlocked = GameGlobal.Storage.getUnlockedLevels();
@@ -31,6 +37,22 @@
       Main.winData = null;
     },
 
+    /** 购买商品（id 以 buy_ 开头） */
+    buyItem: function (itemId) {
+      var items = GameGlobal.SHOP_ITEMS;
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].id !== itemId) continue;
+        var item = items[i];
+        if (!GameGlobal.Storage.spendCoins(item.coins)) {
+          Main.showToast('金币不足，先去通关赚金币吧');
+          return;
+        }
+        GameGlobal.Storage.addTool(item.tool, item.amount);
+        Main.showToast('购买成功：' + item.name);
+        return;
+      }
+    },
+
     /** 全局按钮分发 */
     onAction: function (id) {
       switch (id) {
@@ -41,12 +63,18 @@
         case 'menu_levels':
           UI.showLevelSelect();
           break;
+        case 'menu_shop':
+          UI.showShop();
+          break;
         case 'menu_sound':
           Main.soundOn = !Main.soundOn;
           GameGlobal.SoundManager.setEnabled(Main.soundOn);
           Main.showToast(Main.soundOn ? '音效已开启' : '音效已关闭');
           break;
         case 'levels_back':
+          UI.showMenu();
+          break;
+        case 'shop_back':
           UI.showMenu();
           break;
         case 'game_back':
@@ -70,6 +98,11 @@
           }
           break;
         default:
+          // 商店购买
+          if (id.indexOf('buy_') === 0) {
+            UI.buyItem(id);
+            break;
+          }
           // 关卡选择
           if (id.indexOf('lv_') === 0) {
             var lv = parseInt(id.substring(3), 10);
