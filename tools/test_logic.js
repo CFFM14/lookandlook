@@ -208,10 +208,10 @@ async function main() {
     ok(topFull, '所有列顶部无空洞');
   }
 
-  console.log('\n[5] 冰冻机制（第6关·成对冻结/冰配冰/普冰拒绝）');
+  console.log('\n[5] 冰冻机制（第6关·冰块=两张卡/破冰保留）');
   {
     const g = new Game(6);
-    // 1) 成对冻结：每类型的冰卡数必须是偶数（冰卡天然成对）
+    // 1) 成对冻结：每类型的冰卡数必须是偶数（保证单位数=普×1+冰×2 恒为偶数，布局可解）
     const frozenByType = {};
     for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) {
       if (g.frozen[r][c]) {
@@ -228,9 +228,66 @@ async function main() {
     ok(pairOk, '每类型冰卡数为偶数（成对冻结）');
     ok(frozenTotal >= 5, '冰冻卡数量合理（约30%）');
 
-    // 2) 找一对「冰+冰」可连接组合（同类型两张冰卡）
-    let iceA = null, iceB = null;
+    // 2) 普+冰 配对 → 普消、冰破保留变普通卡（冰块第一次被消）
+    let pr = null, ic = null;
     outer3:
+    for (let r1 = 1; r1 <= g.rows; r1++) {
+      for (let c1 = 1; c1 <= g.cols; c1++) {
+        if (!g.frozen[r1][c1]) continue;
+        const t = g.grid[r1][c1];
+        for (let r2 = 1; r2 <= g.rows; r2++) {
+          for (let c2 = 1; c2 <= g.cols; c2++) {
+            if (r1 === r2 && c1 === c2) continue;
+            if (g.frozen[r2][c2]) continue; // 普通卡
+            if (g.grid[r2][c2] !== t) continue;
+            if (PathChecker.canConnect(g.grid, g.rows, g.cols, r1, c1, r2, c2)) {
+              ic = { r: r1, c: c1 };
+              pr = { r: r2, c: c2 };
+              break outer3;
+            }
+          }
+        }
+      }
+    }
+    if (pr && ic) {
+      g.onTapCard(pr.r, pr.c);
+      g.onTapCard(ic.r, ic.c);
+      await new Promise(r => setTimeout(r, 600));
+      ok(!g.cardNodes[pr.r][pr.c], '普+冰配对：普通卡被消除');
+      ok(g.cardNodes[ic.r][ic.c] !== null, '普+冰配对：冰卡破冰保留在棋盘');
+      ok(g.frozen[ic.r][ic.c] === 0, '普+冰配对：冰卡已破冰');
+      ok(g.cardNodes[ic.r][ic.c].state === 'normal', '破冰卡状态 normal');
+      ok(g.cardNodes[ic.r][ic.c].visual.iceAlpha === 0, '破冰卡冰层已消失');
+      // 3) 破冰后的卡（普通）再配对一次 → 真正消除（需要消除两次）
+      const type2 = g.cardNodes[ic.r][ic.c].type;
+      let pair2 = null;
+      outer4:
+      for (let r2 = 1; r2 <= g.rows; r2++) {
+        for (let c2 = 1; c2 <= g.cols; c2++) {
+          if (r2 === ic.r && c2 === ic.c) continue;
+          const c2card = g.cardNodes[r2][c2];
+          if (!c2card || c2card.type !== type2) continue;
+          if (PathChecker.canConnect(g.grid, g.rows, g.cols, ic.r, ic.c, r2, c2)) {
+            pair2 = { r: r2, c: c2 };
+            break outer4;
+          }
+        }
+      }
+      if (pair2) {
+        g.onTapCard(ic.r, ic.c);
+        g.onTapCard(pair2.r, pair2.c);
+        await new Promise(r => setTimeout(r, 600));
+        ok(!g.cardNodes[ic.r][ic.c], '破冰卡二次配对后真正消除（消两次）');
+      } else {
+        console.log('  (随机布局未找到二次配对，该项跳过)');
+      }
+    } else {
+      console.log('  (随机布局未找到可连「普+冰」对，该项跳过)');
+    }
+
+    // 4) 冰+冰 配对 → 双双击碎都消除
+    let iceA = null, iceB = null;
+    outer5:
     for (let r1 = 1; r1 <= g.rows; r1++) {
       for (let c1 = 1; c1 <= g.cols; c1++) {
         if (!g.frozen[r1][c1]) continue;
@@ -242,63 +299,24 @@ async function main() {
             if (PathChecker.canConnect(g.grid, g.rows, g.cols, r1, c1, r2, c2)) {
               iceA = { r: r1, c: c1 };
               iceB = { r: r2, c: c2 };
-              break outer3;
-            }
-          }
-        }
-      }
-    }
-
-    if (iceA && iceB) {
-      // 点冰卡 → 选中，冰块保留
-      g.onTapCard(iceA.r, iceA.c);
-      ok(g.cardNodes[iceA.r][iceA.c].state === 'selected', '点击冰卡选中');
-      ok(g.frozen[iceA.r][iceA.c] === 1, '选中后冰块保留');
-      // 冰+冰 配对 → 两张都消除
-      g.onTapCard(iceB.r, iceB.c);
-      await new Promise(r => setTimeout(r, 600));
-      ok(!g.cardNodes[iceA.r][iceA.c], '冰卡A已消除');
-      ok(!g.cardNodes[iceB.r][iceB.c], '冰卡B已消除');
-      ok(g.frozen[iceA.r][iceA.c] === 0 && g.frozen[iceB.r][iceB.c] === 0, '冰层随消除清除');
-    } else {
-      console.log('  (随机布局未找到可连「冰+冰」对，该项跳过)');
-    }
-
-    // 3) 普+冰 交叉配对必须被拒绝（两张都保留、冰块不消失）
-    let pr = null, ic = null;
-    outer5:
-    for (let r1 = 1; r1 <= g.rows; r1++) {
-      for (let c1 = 1; c1 <= g.cols; c1++) {
-        if (!g.frozen[r1][c1]) continue;
-        const t = g.grid[r1][c1];
-        for (let r2 = 1; r2 <= g.rows; r2++) {
-          for (let c2 = 1; c2 <= g.cols; c2++) {
-            if (r1 === r2 && c1 === c2) continue;
-            if (g.frozen[r2][c2]) continue; // 必须是普通卡
-            if (g.grid[r2][c2] !== t) continue;
-            if (PathChecker.canConnect(g.grid, g.rows, g.cols, r1, c1, r2, c2)) {
-              ic = { r: r1, c: c1 };
-              pr = { r: r2, c: c2 };
               break outer5;
             }
           }
         }
       }
     }
-    if (pr && ic) {
-      const before = g.remainingPairs;
-      g.onTapCard(ic.r, ic.c);
-      g.onTapCard(pr.r, pr.c);
+    if (iceA && iceB) {
+      g.onTapCard(iceA.r, iceA.c);
+      g.onTapCard(iceB.r, iceB.c);
       await new Promise(r => setTimeout(r, 600));
-      ok(g.cardNodes[ic.r][ic.c] !== null && g.cardNodes[pr.r][pr.c] !== null, '普+冰配对被拒绝，两张卡都保留');
-      ok(g.frozen[ic.r][ic.c] === 1, '冰卡冰块未消失');
-      ok(g.remainingPairs === before, '拒绝后对数不变');
-      ok(g.isProcessing === false, '拒绝后输入解锁');
+      ok(!g.cardNodes[iceA.r][iceA.c], '冰+冰配对：冰卡A消除');
+      ok(!g.cardNodes[iceB.r][iceB.c], '冰+冰配对：冰卡B消除');
+      ok(g.frozen[iceA.r][iceA.c] === 0 && g.frozen[iceB.r][iceB.c] === 0, '冰+冰配对：冰层随消除清除');
     } else {
-      console.log('  (随机布局未找到可连「普+冰」对，该项跳过)');
+      console.log('  (随机布局未找到可连「冰+冰」对，该项跳过)');
     }
 
-    // 4) 炸弹直接炸冰冻卡（不崩溃且记账正确）
+    // 5) 炸弹直接炸冰冻卡（不崩溃且记账正确）
     g.useBomb();
     await new Promise(r => setTimeout(r, 600));
     ok(g.isProcessing === false, '炸弹流程结束');
@@ -419,34 +437,42 @@ async function main() {
     ok(g.isProcessing === false, 'restart 后输入已解锁');
   }
 
-  console.log('\n[9] 冰冻关完整通关（第6关·冰配冰全程无单张）');
+  console.log('\n[9] 冰冻关完整通关（第6关·冰块=两张卡/破冰保留布局可解）');
   {
     winCalled = false;
     const g = new Game(6);
-    let singletonSeen = false;
+    // 统计"单例自动清除"触发次数：合理策略下不应触发（不用炸弹布局可完美消完）
+    let autoSingleton = 0;
+    const origAuto = g.autoClearSingletons;
+    g.autoClearSingletons = function () { autoSingleton++; return origAuto.call(g); };
     let guard = 0;
     while (g.remainingPairs > 0 && guard++ < 150) {
       let found = false;
+      // 策略：优先(冰,冰)→再(冰,普)破冰→后(普,普)，避免孤立冰卡
       outer:
-      for (let r1 = 1; r1 <= g.rows; r1++) {
-        for (let c1 = 1; c1 <= g.cols; c1++) {
-          const card = g.cardNodes[r1][c1];
-          if (!card || card.state === 'eliminated') continue;
-          for (let r2 = 1; r2 <= g.rows; r2++) {
-            for (let c2 = 1; c2 <= g.cols; c2++) {
-              if (r1 === r2 && c1 === c2) continue;
-              const c2card = g.cardNodes[r2][c2];
-              if (!c2card || c2card.state === 'eliminated') continue;
-              if (g.grid[r1][c1] !== g.grid[r2][c2]) continue;
-              // 冰冻状态必须相同（普配普 / 冰配冰）
-              if (g.frozen[r1][c1] !== g.frozen[r2][c2]) continue;
-              if (PathChecker.canConnect(g.grid, g.rows, g.cols, r1, c1, r2, c2)) {
-                g.onTapCard(r1, c1);
-                g.onTapCard(r2, c2);
-                await new Promise(r => setTimeout(r, 650)); // 无重力关 450ms 记账
-                if (g.singletonSet.size > 0) singletonSeen = true;
-                found = true;
-                break outer;
+      for (let phase = 0; phase < 3 && !found; phase++) {
+        for (let r1 = 1; r1 <= g.rows; r1++) {
+          for (let c1 = 1; c1 <= g.cols; c1++) {
+            const card = g.cardNodes[r1][c1];
+            if (!card || card.state === 'eliminated') continue;
+            const f1 = g.frozen[r1][c1] === 1;
+            for (let r2 = 1; r2 <= g.rows; r2++) {
+              for (let c2 = 1; c2 <= g.cols; c2++) {
+                if (r1 === r2 && c1 === c2) continue;
+                const c2card = g.cardNodes[r2][c2];
+                if (!c2card || c2card.state === 'eliminated') continue;
+                const f2 = g.frozen[r2][c2] === 1;
+                if (phase === 0 && !(f1 && f2)) continue;  // 冰+冰
+                if (phase === 1 && !(f1 !== f2)) continue; // 冰+普
+                if (phase === 2 && (f1 || f2)) continue;   // 普+普
+                if (g.grid[r1][c1] !== g.grid[r2][c2]) continue;
+                if (PathChecker.canConnect(g.grid, g.rows, g.cols, r1, c1, r2, c2)) {
+                  g.onTapCard(r1, c1);
+                  g.onTapCard(r2, c2);
+                  await new Promise(r => setTimeout(r, 650)); // 无重力关 450ms 记账
+                  found = true;
+                  break outer;
+                }
               }
             }
           }
@@ -457,7 +483,7 @@ async function main() {
     // 等待：消除收尾 + 死局清场最长时长
     await new Promise(r => setTimeout(r, 3600));
     ok(winCalled, '冰冻关最终胜利');
-    ok(singletonSeen === false, '不用炸弹全程未产生单张（数量始终正好配对）');
+    ok(autoSingleton === 0, '合理策略下未触发单例自动清除（不用炸弹布局可完美消完、无残留单张）');
     // 通关后棋盘应已清空
     let left = 0;
     for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) {
@@ -475,30 +501,36 @@ async function main() {
     let frozenCount = 0;
     for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) if (g.frozen[r][c]) frozenCount++;
     ok(frozenCount >= 8, '第7关含冰冻卡（约25%的12张）');
-    let singletonSeen = false;
+    let autoSingleton = 0;
+    const origAuto = g.autoClearSingletons;
+    g.autoClearSingletons = function () { autoSingleton++; return origAuto.call(g); };
     let guard = 0;
     while (g.remainingPairs > 0 && guard++ < 150) {
       let found = false;
       outer:
-      for (let r1 = 1; r1 <= g.rows; r1++) {
-        for (let c1 = 1; c1 <= g.cols; c1++) {
-          const card = g.cardNodes[r1][c1];
-          if (!card || card.state === 'eliminated') continue;
-          for (let r2 = 1; r2 <= g.rows; r2++) {
-            for (let c2 = 1; c2 <= g.cols; c2++) {
-              if (r1 === r2 && c1 === c2) continue;
-              const c2card = g.cardNodes[r2][c2];
-              if (!c2card || c2card.state === 'eliminated') continue;
-              if (g.grid[r1][c1] !== g.grid[r2][c2]) continue;
-              // 冰冻状态必须相同
-              if (g.frozen[r1][c1] !== g.frozen[r2][c2]) continue;
-              if (PathChecker.canConnect(g.grid, g.rows, g.cols, r1, c1, r2, c2)) {
-                g.onTapCard(r1, c1);
-                g.onTapCard(r2, c2);
-                await new Promise(r => setTimeout(r, 780)); // 消除450ms + 重力动画
-                if (g.singletonSet.size > 0) singletonSeen = true;
-                found = true;
-                break outer;
+      for (let phase = 0; phase < 3 && !found; phase++) {
+        for (let r1 = 1; r1 <= g.rows; r1++) {
+          for (let c1 = 1; c1 <= g.cols; c1++) {
+            const card = g.cardNodes[r1][c1];
+            if (!card || card.state === 'eliminated') continue;
+            const f1 = g.frozen[r1][c1] === 1;
+            for (let r2 = 1; r2 <= g.rows; r2++) {
+              for (let c2 = 1; c2 <= g.cols; c2++) {
+                if (r1 === r2 && c1 === c2) continue;
+                const c2card = g.cardNodes[r2][c2];
+                if (!c2card || c2card.state === 'eliminated') continue;
+                const f2 = g.frozen[r2][c2] === 1;
+                if (phase === 0 && !(f1 && f2)) continue;
+                if (phase === 1 && !(f1 !== f2)) continue;
+                if (phase === 2 && (f1 || f2)) continue;
+                if (g.grid[r1][c1] !== g.grid[r2][c2]) continue;
+                if (PathChecker.canConnect(g.grid, g.rows, g.cols, r1, c1, r2, c2)) {
+                  g.onTapCard(r1, c1);
+                  g.onTapCard(r2, c2);
+                  await new Promise(r => setTimeout(r, 780)); // 消除450ms + 重力动画
+                  found = true;
+                  break outer;
+                }
               }
             }
           }
@@ -508,7 +540,7 @@ async function main() {
     }
     await new Promise(r => setTimeout(r, 3600));
     ok(winCalled, '组合关最终胜利（重力+冰冻并存不卡死）');
-    ok(singletonSeen === false, '组合关不用炸弹全程未产生单张');
+    ok(autoSingleton === 0, '组合关合理策略下未触发单例自动清除');
     let left = 0;
     for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) {
       if (g.cardNodes[r][c] && g.cardNodes[r][c].state !== 'eliminated') left++;
