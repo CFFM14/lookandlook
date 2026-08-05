@@ -29,37 +29,37 @@ GameGlobal.FRUIT_NAMES = [
 GameGlobal.LEVELS = [
   {
     id: 1, name: '水果初识', desc: '轻松入门，认识水果', difficulty: 1,
-    rows: 4, cols: 4, fruitTypeCount: 4,
+    rows: 6, cols: 4, fruitTypeCount: 6,
     gravity: null, frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },
   {
     id: 2, name: '经典果园', desc: '标准连连看，水果大丰收', difficulty: 1,
-    rows: 6, cols: 8, fruitTypeCount: 12,
+    rows: 8, cols: 6, fruitTypeCount: 12,
     gravity: null, frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },
   {
     id: 3, name: '果果下坠', desc: '消除后水果会往下掉落哦', difficulty: 2,
-    rows: 6, cols: 8, fruitTypeCount: 8,
+    rows: 8, cols: 6, fruitTypeCount: 8,
     gravity: 'down', frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },
   {
     id: 4, name: '冰封之果', desc: '冰住的果子要点击两次才能消除', difficulty: 2,
-    rows: 5, cols: 6, fruitTypeCount: 6,
+    rows: 6, cols: 5, fruitTypeCount: 6,
     gravity: null, frozenRatio: 0.3,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },
   {
     id: 5, name: '左移风暴', desc: '消除后水果向左移动', difficulty: 3,
-    rows: 6, cols: 6, fruitTypeCount: 6,
+    rows: 8, cols: 5, fruitTypeCount: 10,
     gravity: 'left', frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },
   {
     id: 6, name: '终极挑战', desc: '重力+冰冻，双重考验！', difficulty: 3,
-    rows: 7, cols: 8, fruitTypeCount: 10,
+    rows: 8, cols: 7, fruitTypeCount: 10,
     gravity: 'down', frozenRatio: 0.2,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   },

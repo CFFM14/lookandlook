@@ -113,7 +113,7 @@ async function main() {
   {
     for (const lv of [1, 2, 3, 4, 5, 6]) {
       const game = new Game(lv);
-      const expectPairs = (lv === 1 ? 16 : lv === 2 ? 48 : lv === 3 ? 48 : lv === 4 ? 30 : lv === 5 ? 36 : 56) / 2;
+      const expectPairs = (lv === 1 ? 24 : lv === 2 ? 48 : lv === 3 ? 48 : lv === 4 ? 30 : lv === 5 ? 40 : 56) / 2;
       ok(game.remainingPairs === expectPairs, '第' + lv + '关 对数=' + expectPairs);
       const counts = {};
       let total = 0;
@@ -133,21 +133,22 @@ async function main() {
   console.log('\n[3] 重力 down（第3关）');
   {
     const g = new Game(3);
-    // 模拟消除第 6 行两格
-    g.grid[6][3] = 0; g.cardNodes[6][3] = null;
-    g.grid[6][5] = 0; g.cardNodes[6][5] = null;
+    const R = g.rows, C = g.cols;
+    // 模拟消除底部第 3、5 列各一格
+    g.grid[R][3] = 0; g.cardNodes[R][3] = null;
+    g.grid[R][5] = 0; g.cardNodes[R][5] = null;
     const moves = g.applyGravity();
-    ok(g.grid[6][3] !== 0, '第3列底部被填充');
-    ok(g.grid[6][5] !== 0, '第5列底部被填充');
-    ok(moves.some(m => m.fc === 3 && m.tr === 6 && m.tc === 3), '第3列有下移动画');
+    ok(g.grid[R][3] !== 0, '第3列底部被填充');
+    ok(g.grid[R][5] !== 0, '第5列底部被填充');
+    ok(moves.some(m => m.fc === 3 && m.tr === R && m.tc === 3), '第3列有下移动画');
     // 不变量：非空卡数量不变
     let cnt = 0;
-    for (let r = 1; r <= 6; r++) for (let c = 1; c <= 8; c++) if (g.grid[r][c]) cnt++;
-    ok(cnt === 46, '重力后卡片数量守恒');
+    for (let r = 1; r <= R; r++) for (let c = 1; c <= C; c++) if (g.grid[r][c]) cnt++;
+    ok(cnt === R * C - 2, '重力后卡片数量守恒');
     // 每列底部无空洞
     let bottomFull = true;
-    for (let c = 1; c <= 8; c++) {
-      for (let r = 6; r >= 1; r--) {
+    for (let c = 1; c <= C; c++) {
+      for (let r = R; r >= 1; r--) {
         if (g.grid[r][c] === 0) {
           for (let r2 = r - 1; r2 >= 1; r2--) if (g.grid[r2][c]) bottomFull = false;
           break;

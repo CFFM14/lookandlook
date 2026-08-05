@@ -130,7 +130,7 @@ async function main() {
   check(clicked === 1, '模拟点击了一对可消除卡片');
   check(game.isProcessing === true, '消除流程进行中');
   await new Promise(r => setTimeout(r, 600));
-  check(game.remainingPairs === 7, '消除后剩余 7 对（第1关 8 对）');
+  check(game.remainingPairs === 11, '消除后剩余 11 对（第1关 12 对）');
 
   // 工具按钮
   GameGlobal.UI.onAction('btn_hint');
@@ -138,7 +138,7 @@ async function main() {
   GameGlobal.UI.onAction('btn_bomb');
   await new Promise(r => setTimeout(r, 700));
   check(game.isProcessing === false, '炸弹流程结束解锁');
-  check(game.remainingPairs <= 7, '炸弹后对数减少或不变');
+  check(game.remainingPairs <= 11, '炸弹后对数减少或不变');
 
   // 渲染 win 前的动画帧
   for (let i = 0; i < 3; i++) { GameGlobal.Main.update(16); GameGlobal.Main.render(); }
