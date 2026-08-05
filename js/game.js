@@ -5,8 +5,8 @@
  * 数据结构：
  *   grid[r][c]      —— 水果类型 1..12 或 0（空）
  *   cardNodes[r][c] —— card 对象或 null；card = {r, c, type, state, baseX, baseY, visual}
- *   frozen[r][c]    —— 1=带冰层 0=无（与卡片位置同步移动）；成对冻结，冰卡只能与冰卡配对
- *   singletonSet    —— Set<"r,c"> 单例（仅炸弹等外力产生奇数张，通关前自动消除）
+ *   frozen[r][c]    —— 1=带冰层 0=无（与卡片位置同步移动）；成对冻结，冰块=两张卡（破冰保留，需消除两次）
+ *   singletonSet    —— Set<"r,c"> 单例（仅炸弹等外力或玩家孤立冰卡时产生，结算前自动消除）
  *   card.state      —— 'normal'|'selected'|'eliminating'|'eliminated'|'mismatch'|'hintFlash'
  */
 (function () {
@@ -209,14 +209,8 @@
         this.showMismatch(first, card);
         return;
       }
-      // 冰冻状态必须相同：普+普 / 冰+冰 可消，普+冰 禁止（保证数量永远正好配对）
-      var f1 = this.frozen[first.r][first.c] === 1;
-      var f2 = this.frozen[card.r][card.c] === 1;
-      if (f1 !== f2) {
-        this.showMismatch(first, card);
-        GameGlobal.Main.showToast('冰块只能和冰块配对哦');
-        return;
-      }
+      // 冰块 = 两张卡（需消除两次）：普+冰 配对时普卡消、冰卡破冰保留；
+      // 冰+冰 双双击碎。任何同类型组合都可配对，不做状态限制（见 eliminatePair）
 
       var path = GameGlobal.PathChecker.canConnect(this.grid, this.rows, this.cols,
         first.r, first.c, card.r, card.c);
@@ -247,54 +241,85 @@
   // ══════════════════════════════════════════════
 
   /**
-   * 配对消除：任何有效配对（普+普 / 冰+冰）都消除两张。
-   * 冰卡消除时伴随冰裂特效（thaw 音效 + 冰屑粒子 + 冰层淡出）。
-   * 不存在"破冰保留"——普+冰交叉配对已在 onTapCard 拒绝，数量始终正好配对。
+   * 配对消除（冰块 = 两张卡，需消除两次）：
+   *   普+普 → 两张都消除
+   *   普+冰 → 普通卡消除，冰卡只破冰（冰裂动画）保留为普通卡 —— 冰块第一次被消（破冰）
+   *   冰+冰 → 两张都消除（双双击碎）
+   * 成对冻结保证初始"单位数"（普×1 + 冰×2）恒为偶数，不用炸弹时布局可完美消完；
+   * 玩家若把冰卡孤立成单张，由单例机制在结算前自动清除（与炸弹单张一致）。
    */
   Game.prototype.eliminatePair = function (card1, card2, path) {
     var self = this;
     var f1 = this.frozen[card1.r][card1.c] === 1;
     var f2 = this.frozen[card2.r][card2.c] === 1;
+    // 破冰保留（仅"普+冰"中的冰卡）：keepX=true → 不消除
+    var keep1 = f1 && !f2;
+    var keep2 = f2 && !f1;
+    var elim1 = !keep1;
+    var elim2 = !keep2;
 
     // 连线（金色）+ 音效马上响
     this.connectionLine = { points: path, color: 'gold', timeLeft: T.ELIM_LINE };
     GameGlobal.SoundManager.play('elim');
 
-    // 第一张消除（冰卡伴随冰裂）
-    this.grid[card1.r][card1.c] = 0;
-    this.cardNodes[card1.r][card1.c] = null;
-    this.frozen[card1.r][card1.c] = 0;
-    this.singletonSet.delete(card1.r + ',' + card1.c);
-    var p1 = this.logicToPixel(card1.r, card1.c);
-    card1.state = 'eliminating';
-    GameGlobal.Renderer.spawnFirework(p1.x, p1.y);
-    if (f1) {
+    // ── 破冰保留的卡：冰裂动画，卡片留在棋盘变普通卡 ──
+    if (keep1) {
+      this.frozen[card1.r][card1.c] = 0;
+      var pk1 = this.logicToPixel(card1.r, card1.c);
       GameGlobal.SoundManager.play('thaw');
-      GameGlobal.Renderer.spawnIceShards(p1.x, p1.y);
-      GameGlobal.Tween.to(card1.visual, { iceAlpha: 0 }, 180, 'linear');
+      GameGlobal.Renderer.spawnIceShards(pk1.x, pk1.y);
+      GameGlobal.Tween.to(card1.visual, { iceAlpha: 0 }, 250, 'linear');
+      card1.state = 'normal';
+      this.highlightCard(card1, false);
     }
-    GameGlobal.Tween.to(card1.visual, { scale: 0 }, T.ELIM_SCALE, 'easeIn', function () {
-      card1.state = 'eliminated';
-    });
+    if (keep2) {
+      this.frozen[card2.r][card2.c] = 0;
+      var pk2 = this.logicToPixel(card2.r, card2.c);
+      GameGlobal.SoundManager.play('thaw');
+      GameGlobal.Renderer.spawnIceShards(pk2.x, pk2.y);
+      GameGlobal.Tween.to(card2.visual, { iceAlpha: 0 }, 250, 'linear');
+      card2.state = 'normal';
+      this.highlightCard(card2, false);
+    }
 
-    // 第二张延迟 0.1s
-    this._after(100, function () {
-      self.grid[card2.r][card2.c] = 0;
-      self.cardNodes[card2.r][card2.c] = null;
-      self.frozen[card2.r][card2.c] = 0;
-      self.singletonSet.delete(card2.r + ',' + card2.c);
-      var p2 = self.logicToPixel(card2.r, card2.c);
-      card2.state = 'eliminating';
-      GameGlobal.Renderer.spawnFirework(p2.x, p2.y);
-      if (f2) {
+    // ── 消除的卡（冰+冰 消除伴随双冰碎裂）──
+    if (elim1) {
+      this.grid[card1.r][card1.c] = 0;
+      this.cardNodes[card1.r][card1.c] = null;
+      this.frozen[card1.r][card1.c] = 0;
+      this.singletonSet.delete(card1.r + ',' + card1.c);
+      var p1 = this.logicToPixel(card1.r, card1.c);
+      card1.state = 'eliminating';
+      GameGlobal.Renderer.spawnFirework(p1.x, p1.y);
+      if (f1) {
         GameGlobal.SoundManager.play('thaw');
-        GameGlobal.Renderer.spawnIceShards(p2.x, p2.y);
-        GameGlobal.Tween.to(card2.visual, { iceAlpha: 0 }, 180, 'linear');
+        GameGlobal.Renderer.spawnIceShards(p1.x, p1.y);
+        GameGlobal.Tween.to(card1.visual, { iceAlpha: 0 }, 180, 'linear');
       }
-      GameGlobal.Tween.to(card2.visual, { scale: 0 }, T.ELIM_SCALE, 'easeIn', function () {
-        card2.state = 'eliminated';
+      GameGlobal.Tween.to(card1.visual, { scale: 0 }, T.ELIM_SCALE, 'easeIn', function () {
+        card1.state = 'eliminated';
       });
-    });
+    }
+
+    if (elim2) {
+      this._after(100, function () {
+        self.grid[card2.r][card2.c] = 0;
+        self.cardNodes[card2.r][card2.c] = null;
+        self.frozen[card2.r][card2.c] = 0;
+        self.singletonSet.delete(card2.r + ',' + card2.c);
+        var p2 = self.logicToPixel(card2.r, card2.c);
+        card2.state = 'eliminating';
+        GameGlobal.Renderer.spawnFirework(p2.x, p2.y);
+        if (f2) {
+          GameGlobal.SoundManager.play('thaw');
+          GameGlobal.Renderer.spawnIceShards(p2.x, p2.y);
+          GameGlobal.Tween.to(card2.visual, { iceAlpha: 0 }, 180, 'linear');
+        }
+        GameGlobal.Tween.to(card2.visual, { scale: 0 }, T.ELIM_SCALE, 'easeIn', function () {
+          card2.state = 'eliminated';
+        });
+      });
+    }
 
     // 连线 0.2s 后清除
     this._after(T.ELIM_LINE + 20, function () {
@@ -306,7 +331,7 @@
       self.selectedCard = null;
       self.isProcessing = false;
       self.moves++;
-      // 按类型全量重算对数与单例（不用炸弹时不会有单例，炸弹后可能有，防御性保留）
+      // 破冰保留会改变类型奇偶结构 → 按类型全量重算对数与单例（最可靠）
       self.recomputeRemainingPairs();
       self.recomputeSingletons();
       self.afterEliminate();
@@ -353,8 +378,9 @@
   };
 
   /**
-   * 全量重算单例标记：每种水果剩余奇数张时，最后 1 张标记为单例
-   * （单例卡不可点选，剩余对清完后自动消除）
+   * 全量重算并处理"单张"：只有某类型真正只剩 1 张（孤卡，已无配对可能）时，
+   * 立即自动消除（冰块融化/孤卡消失，不滞留棋盘）。
+   * 奇数 ≥3 张（如破冰保留后的 3 张）仍可配对，交给后续配对自然消完，不清除。
    */
   Game.prototype.recomputeSingletons = function () {
     this.singletonSet.clear();
@@ -370,11 +396,26 @@
     for (var t in byType) {
       if (!byType.hasOwnProperty(t)) continue;
       var list = byType[t];
-      if (list.length % 2 === 1) {
-        var last = list[list.length - 1];
-        this.singletonSet.add(last.r + ',' + last.c);
+      if (list.length === 1) {
+        this.clearSingletonImmediately(list[0]);
       }
     }
+  };
+
+  /** 立即自动消除一张单张（缩放消失动画，动画结束再检测一次胜利） */
+  Game.prototype.clearSingletonImmediately = function (card) {
+    if (card.state === 'eliminated' || card.state === 'eliminating') return;
+    var self = this;
+    this.grid[card.r][card.c] = 0;
+    this.cardNodes[card.r][card.c] = null;
+    this.frozen[card.r][card.c] = 0;
+    card.state = 'eliminating';
+    GameGlobal.SoundManager.play('elim');
+    GameGlobal.Tween.to(card.visual, { scale: 0 }, 220, 'easeIn', function () {
+      card.state = 'eliminated';
+      // 单张可能触发胜利（棋盘清空）或需要重力填充空位
+      self.afterEliminate();
+    });
   };
 
   /** 消除流程收尾：剩余对>0 且有重力 → 重力动画；否则胜利检测 */
@@ -630,7 +671,7 @@
   //  💡 提示
   // ══════════════════════════════════════════════
 
-  /** 找第一对可连接的配对（按"类型+冰冻状态"分组：普配普、冰配冰），画蓝色连线并闪烁（消耗 1 次提示） */
+  /** 找第一对可连接的配对（冰块可配普卡/冰卡，按类型分组即可），画蓝色连线并闪烁（消耗 1 次提示） */
   Game.prototype.showHint = function () {
     if (this.isProcessing) return;
     if (!GameGlobal.Storage.useTool('hint')) {
@@ -646,17 +687,15 @@
       }
     }
 
-    // 按 类型_状态 分组（冰卡只能与冰卡配）
-    var byKey = {};
+    var byType = {};
     for (var i = 0; i < cards.length; i++) {
       var cd = cards[i];
-      var key = cd.type + '_' + (this.frozen[cd.r][cd.c] === 1 ? 'ice' : 'nor');
-      (byKey[key] = byKey[key] || []).push(cd);
+      (byType[cd.type] = byType[cd.type] || []).push(cd);
     }
 
-    for (var t in byKey) {
-      if (!byKey.hasOwnProperty(t)) continue;
-      var same = byKey[t];
+    for (var t in byType) {
+      if (!byType.hasOwnProperty(t)) continue;
+      var same = byType[t];
       if (same.length < 2) continue;
       for (var a = 0; a < same.length; a++) {
         for (var b = a + 1; b < same.length; b++) {
@@ -691,7 +730,7 @@
   //  胜利检查 & 死局 & 单例
   // ══════════════════════════════════════════════
 
-  /** 是否至少存在一对可连接的配对（按"类型+冰冻状态"分组：普配普、冰配冰） */
+  /** 是否至少存在一对可连接的配对（冰块可配普卡/冰卡，按类型分组即可） */
   Game.prototype.hasValidMove = function () {
     var cards = [];
     for (var r = 1; r <= this.rows; r++) {
@@ -700,15 +739,14 @@
         if (card && card.state !== 'eliminated') cards.push(card);
       }
     }
-    var byKey = {};
+    var byType = {};
     for (var i = 0; i < cards.length; i++) {
       var cd = cards[i];
-      var key = cd.type + '_' + (this.frozen[cd.r][cd.c] === 1 ? 'ice' : 'nor');
-      (byKey[key] = byKey[key] || []).push(cd);
+      (byType[cd.type] = byType[cd.type] || []).push(cd);
     }
-    for (var t in byKey) {
-      if (!byKey.hasOwnProperty(t)) continue;
-      var same = byKey[t];
+    for (var t in byType) {
+      if (!byType.hasOwnProperty(t)) continue;
+      var same = byType[t];
       if (same.length < 2) continue;
       for (var a = 0; a < same.length; a++) {
         for (var b = a + 1; b < same.length; b++) {
