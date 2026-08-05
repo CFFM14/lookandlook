@@ -186,30 +186,21 @@
       }
       x += dx;
 
-      // 圆角卡片底（米黄渐变）
-      this.roundRectPath(x, y, size, size, Math.max(6, size * 0.14));
-      ctx.save();
-      ctx.clip();
-
-      var grad = ctx.createLinearGradient(x, y, x, y + size);
-      grad.addColorStop(0, '#FFF6DC');
-      grad.addColorStop(1, '#FFD98E');
-      ctx.fillStyle = grad;
-      ctx.fillRect(x, y, size, size);
-
-      // 水果图（图片键名补零：fruit_01 ~ fruit_12）
+      // 水果卡图：素材本身已包含卡片底座，直接铺满格子（不再叠加程序绘制的底座）
       var img = this.images['fruit_' + (card.type < 10 ? '0' : '') + card.type];
       if (img) {
         ctx.drawImage(img, x, y, size, size);
       }
 
-      // 冰层（frozen / thawing 用 iceAlpha 控制）
+      // 冰层（frozen / thawing 用 iceAlpha 控制，直接叠在水果图上）
       var iceAlpha = v.iceAlpha;
       if ((state === 'frozen' || state === 'thawing') && iceAlpha > 0.01) {
-        ctx.fillStyle = 'rgba(180, 225, 255, ' + (0.62 * iceAlpha) + ')';
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, iceAlpha);
+        ctx.fillStyle = 'rgba(180, 225, 255, 0.62)';
         ctx.fillRect(x, y, size, size);
         // 斜线纹理
-        ctx.strokeStyle = 'rgba(255,255,255,' + (0.7 * iceAlpha) + ')';
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
         ctx.lineWidth = Math.max(1, size * 0.045);
         for (var i = -1; i <= 2; i++) {
           ctx.beginPath();
@@ -218,13 +209,12 @@
           ctx.stroke();
         }
         // 顶部高光条
-        ctx.fillStyle = 'rgba(255,255,255,' + (0.5 * iceAlpha) + ')';
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
         ctx.fillRect(x, y, size, size * 0.22);
+        ctx.restore();
       }
 
-      ctx.restore();
-
-      // 外框 / 光晕（不裁剪）
+      // 外框 / 光晕（选中/提示）
       var borderColor = null;
       var lineW = Math.max(2, size * 0.05);
       if (state === 'selected' || state === 'hintFlash') {
@@ -239,7 +229,7 @@
         }
       }
       if (borderColor) {
-        this.roundRectPath(x, y, size, size, Math.max(6, size * 0.14));
+        this.roundRectPath(x, y, size, size, Math.max(4, size * 0.1));
         ctx.strokeStyle = borderColor;
         ctx.lineWidth = lineW;
         ctx.stroke();
@@ -251,7 +241,7 @@
         var pulse = 1 + 0.12 * Math.sin((now - card.flashT) / 150 * Math.PI * 2);
         // 叠加一层光晕圆角
         var px = v.x - size * pulse / 2, py = v.y - size * pulse / 2;
-        this.roundRectPath(px, py, size * pulse, size * pulse, Math.max(6, size * 0.14));
+        this.roundRectPath(px, py, size * pulse, size * pulse, Math.max(4, size * 0.1));
         ctx.strokeStyle = 'rgba(77, 166, 255, 0.55)';
         ctx.lineWidth = lineW * 0.8;
         ctx.stroke();
