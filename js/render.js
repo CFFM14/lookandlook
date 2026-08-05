@@ -202,12 +202,16 @@
       if (iceAlpha > 0.01) {
         ctx.save();
         ctx.globalAlpha = Math.min(1, iceAlpha);
+        // 裁剪到卡片范围内，防止斜线/冰面画到相邻卡片上
+        ctx.beginPath();
+        ctx.rect(x, y, size, size);
+        ctx.clip();
         ctx.fillStyle = 'rgba(180, 225, 255, 0.62)';
         ctx.fillRect(x, y, size, size);
-        // 斜线纹理
+        // 斜线纹理（只在卡片内部斜切，不越界）
         ctx.strokeStyle = 'rgba(255,255,255,0.7)';
         ctx.lineWidth = Math.max(1, size * 0.045);
-        for (var i = -1; i <= 2; i++) {
+        for (var i = 0; i < 3; i++) {
           ctx.beginPath();
           ctx.moveTo(x + i * size * 0.5, y);
           ctx.lineTo(x + (i + 1) * size * 0.5, y + size);
