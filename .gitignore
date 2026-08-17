@@ -1,0 +1,5 @@
+.workbuddy/
+
+# 游戏未使用的废弃资源（已回退为 png/jpg/mp3）
+*.webp
+audio/*.wav

@@ -80,6 +80,7 @@
     images: {},
     page: 'menu',
     game: null,
+    gameFrom: 'menu',   // 当前局的进入来源：'menu'（主界面开始）| 'levels'（选关界面进入），决定游戏内"返回"去向
     winData: null,
     toast: null,
     soundOn: true,
@@ -89,7 +90,14 @@
     buttonBounds: [],
     pressedId: null,
 
-    levelScrollY: 0, // 关卡选择页列表滚动偏移（设计坐标，≤0）
+    // 选关界面分页状态
+    levelPage: 0,          // 当前页码（0 起）
+    levelPageAnim: 0,      // 翻页动画进度 0~1（0 = 静止）
+    levelPageFrom: 0,      // 动画起始页
+    levelPageTo: 0,        // 动画目标页
+    levelPageDir: 1,       // 翻页方向：1 下一页 / -1 上一页
+    _levelDragging: false, // 选关界面水平拖拽中
+    _levelDragX: 0,        // 拖拽累计偏移（设计坐标）
     _touchStart: null,
     _touchMoved: false,
     _ready: false,
@@ -111,14 +119,48 @@
       this.offsetY = (this.screenH - GameGlobal.DESIGN_H * this.scale) / 2;
       this._pr = pr;
 
+      // 刘海屏安全距离：取右上角胶囊按钮顶部到屏幕顶的距离，
+      // 顶部"返回"按钮/标题绘制在胶囊下方，避免被刘海/状态栏遮挡
+      try {
+        var mb = wx.getMenuButtonBoundingClientRect && wx.getMenuButtonBoundingClientRect();
+        // mb.top 是 CSS 像素，转设计坐标（除以 scale），并留出 8px 缓冲
+        GameGlobal.SAFE_TOP = mb ? Math.round(mb.top / this.scale) + 8 : 0;
+      } catch (e) {
+        GameGlobal.SAFE_TOP = 0;
+      }
+
       GameGlobal.Renderer.init(this.ctx);
       GameGlobal.SoundManager.init();
       this.soundOn = GameGlobal.SoundManager.isEnabled();
+
+      // 稳定性：错误上报 + 内存告警
+      if (wx.onError) {
+        wx.onError(function (err) {
+          if (console && console.error) console.error('[wx.onError]', err);
+        });
+      }
+      if (wx.onMemoryWarning) {
+        wx.onMemoryWarning && wx.onMemoryWarning(function (level) {
+          // level: 0=低 1=中 2=高；高时给玩家提示并暂停 BGM 释放音频内存
+          if (level >= 1 && GameGlobal.SoundManager && GameGlobal.SoundManager.stopBgm) {
+            GameGlobal.SoundManager.stopBgm();
+          }
+          if (level >= 2 && Main && Main.showToast) {
+            Main.showToast('内存紧张，建议重启小游戏');
+          }
+        });
+      }
 
       this.loadImages(function () {
         self._ready = true;
         self.bindTouch();
         self.gameLoop();
+        // 启用右上角"转发"菜单（覆盖整个游戏，玩家随时可分享）
+        try {
+          if (wx.showShareMenu) {
+            wx.showShareMenu({ withShareTicket: false, menus: ['shareAppMessage'] });
+          }
+        } catch (e) {}
       });
     },
 
@@ -163,25 +205,51 @@
         var t = e.touches && e.touches[0];
         if (!t || !self._touchStart) return;
         if (self.page === 'levels') {
-          self._touchMoved = true;
-          self.pressedId = null;
-          var d = (t.clientY - self._touchStart.y) / self.scale;
-          var scrollMax = GameGlobal.Renderer.getLevelListMetrics().scrollMax;
-          if (scrollMax > 0) {
-            self.levelScrollY = Math.max(-scrollMax, Math.min(0, self.levelScrollY + d));
+          var dx = (t.clientX - self._touchStart.x) / self.scale;
+          var dy = (t.clientY - self._touchStart.y) / self.scale;
+          // 只有移动超过阈值（约 8 设计像素）才视为“滑动过”，
+          // 否则轻按时的微小抖动会置位 _touchMoved，导致 onTouchEnd 吞掉本次点击
+          if (dx * dx + dy * dy > 64) {
+            self._touchMoved = true;
+            self.pressedId = null;
           }
-          self._touchStart.y = t.clientY;
+          // 判定为水平拖拽后，跟随手指平移（垂直方向不再处理）
+          if (Math.abs(dx) > Math.abs(dy) + 6 && !self._levelDragging) {
+            self._levelDragging = true;
+          }
+          if (self._levelDragging) {
+            // 动画中禁止拖拽（等动画结束）
+            if (!(self.levelPageAnim > 0 && self.levelPageAnim < 1)) {
+              self._levelDragX = dx;
+            }
+          } else {
+            self._touchStart.y = t.clientY; // 垂直方向：无滚动，忽略
+          }
         }
       });
       wx.onTouchEnd(function (e) {
         var t = e.changedTouches && e.changedTouches[0];
         if (!t || !self._touchStart) return;
-        var dx = t.clientX - self._touchStart.x;
-        var dy = t.clientY - self._touchStart.y;
+        var dx = (t.clientX - self._touchStart.x) / self.scale;
+        var dy = (t.clientY - self._touchStart.y) / self.scale;
         self._touchStart = null;
         self.pressedId = null;
+
+        // 选关界面：水平拖拽结束 → 判定翻页
+        if (self.page === 'levels' && self._levelDragging) {
+          var dragX = self._levelDragX;
+          self._levelDragging = false;
+          // 拖满 60 设计像素才翻页，否则平滑回弹到原页
+          if (Math.abs(dragX) > 60) {
+            self._levelDragX = 0;
+            GameGlobal.UI.onAction(dragX < 0 ? 'levels_next' : 'levels_prev');
+          } else if (dragX !== 0) {
+            GameGlobal.Tween.to(self, { _levelDragX: 0 }, 180, 'easeOut');
+          }
+          return;
+        }
         if (self._touchMoved) return; // 滑动过列表则不算点击
-        if (dx * dx + dy * dy > 1600) return; // 滑动超过 40px 视为滑动，不触发
+        if (dx * dx + dy * dy > 1600) return; // 滑动超过 40 设计像素视为滑动，不触发
         self.handleTap(t.clientX, t.clientY);
       });
     },

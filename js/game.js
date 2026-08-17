@@ -84,6 +84,20 @@
   Game.prototype.generateLayout = function () {
     var totalCards = this.rows * this.cols;
     var pairsNeeded = totalCards / 2;
+
+    // 固定关卡：直接使用预生成布局（js/levels.js），保证每关打开都是同一副棋盘
+    var fixed = GameGlobal.LEVEL_LAYOUTS && GameGlobal.LEVEL_LAYOUTS[this.levelId];
+    if (fixed && fixed.g && fixed.g.length === totalCards) {
+      var idx = 0;
+      for (var r2 = 1; r2 <= this.rows; r2++) {
+        for (var c2 = 1; c2 <= this.cols; c2++) {
+          this.grid[r2][c2] = fixed.g[idx++];
+        }
+      }
+      this.remainingPairs = pairsNeeded;
+      return;
+    }
+
     var fruitTypeCount = this.cfg.fruitTypeCount;
     var types = [];
     var basePairs = Math.floor(pairsNeeded / fruitTypeCount);
@@ -134,6 +148,20 @@
    * 配对规则（普+普 / 冰+冰 可消；普+冰 禁止），因此不用炸弹时数量永远正好配对、无单张。
    */
   Game.prototype.applyFrozen = function (ratio) {
+    // 固定关卡：使用预生成冰冻位置
+    var fixed = GameGlobal.LEVEL_LAYOUTS && GameGlobal.LEVEL_LAYOUTS[this.levelId];
+    if (fixed && fixed.f && fixed.f.length) {
+      for (var fi = 0; fi < fixed.f.length; fi++) {
+        var fidx = fixed.f[fi];
+        var fr = Math.floor(fidx / this.cols) + 1;
+        var fc = (fidx % this.cols) + 1;
+        this.frozen[fr][fc] = 1;
+        var fcard = this.cardNodes[fr][fc];
+        if (fcard) fcard.visual.iceAlpha = 1;
+      }
+      return;
+    }
+
     // 按类型收集卡片
     var byType = {};
     for (var r = 1; r <= this.rows; r++) {
@@ -194,10 +222,12 @@
       this.selectedCard = card;
       card.state = 'selected';
       this.highlightCard(card, true);
+      GameGlobal.SoundManager.play('select');
     } else if (this.selectedCard === card) {
       card.state = 'normal';
       this.highlightCard(card, false);
       this.selectedCard = null;
+      GameGlobal.SoundManager.play('select');
     } else {
       var first = this.selectedCard;
       this.isProcessing = true;
@@ -530,6 +560,7 @@
       this.checkWinOrAutoClear();
       return;
     }
+    GameGlobal.SoundManager.play('slide');
     var maxDist = 0;
     for (var i = 0; i < moves.length; i++) {
       var m = moves[i];
@@ -664,7 +695,7 @@
       this.highlightCard(this.selectedCard, false);
       this.selectedCard = null;
     }
-    GameGlobal.SoundManager.play('click');
+    GameGlobal.SoundManager.play('sweep');
   };
 
   // ══════════════════════════════════════════════
@@ -703,6 +734,7 @@
           var path = GameGlobal.PathChecker.canConnect(this.grid, this.rows, this.cols,
             cardA.r, cardA.c, cardB.r, cardB.c);
           if (path) {
+            GameGlobal.SoundManager.play('hint');
             this.showHintLine(path, cardA, cardB);
             return;
           }
@@ -799,6 +831,7 @@
     }
     this.singletonSet.clear();
     this.remainingPairs = 0;
+    if (toClear.length) GameGlobal.SoundManager.play('elim');
 
     for (var i = 0; i < toClear.length; i++) {
       (function (card, delay) {
@@ -827,6 +860,7 @@
       if (card && card.state !== 'eliminated') toClear.push(card);
     });
     this.singletonSet.clear();
+    if (toClear.length) GameGlobal.SoundManager.play('elim');
 
     for (var i = 0; i < toClear.length; i++) {
       (function (card, delay) {
@@ -860,6 +894,7 @@
     if (this._won) return;
     this._won = true;
     GameGlobal.SoundManager.play('win');
+    GameGlobal.SoundManager.play('coin');
     GameGlobal.Storage.unlockNextLevel(this.levelId);
     GameGlobal.Renderer.spawnWinFireworks();
 

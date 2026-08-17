@@ -38,6 +38,7 @@ global.GameGlobal.Main = {
 };
 
 require('../js/config.js');
+require('../js/levels.js');
 require('../js/pathChecker.js');
 require('../js/storage.js');
 const Game = require('../js/game.js');
@@ -120,6 +121,34 @@ async function main() {
       const game = new Game(lv.id);
       const expectPairs = lv.rows * lv.cols / 2;
       ok(game.remainingPairs === expectPairs, '第' + lv.id + '关 对数=' + expectPairs);
+
+      // 固定布局：实际棋盘必须与 levels.js 数据一致
+      const fixed = GameGlobal.LEVEL_LAYOUTS[lv.id];
+      ok(fixed && fixed.g.length === lv.rows * lv.cols, '第' + lv.id + '关 固定布局存在且尺寸正确');
+      let flatOk = true;
+      let frozenTotal = 0;
+      const frozenByType = {};
+      for (let r = 1; r <= game.rows; r++) {
+        for (let c = 1; c <= game.cols; c++) {
+          const flatIdx = (r - 1) * game.cols + (c - 1);
+          if (game.grid[r][c] !== fixed.g[flatIdx]) flatOk = false;
+          if (game.frozen[r][c]) {
+            frozenTotal++;
+            const t = game.grid[r][c];
+            frozenByType[t] = (frozenByType[t] || 0) + 1;
+          }
+        }
+      }
+      ok(flatOk, '第' + lv.id + '关 实际棋盘与固定布局一致');
+      if (lv.frozenRatio > 0) {
+        let frozenPairOk = true;
+        for (const t in frozenByType) if (frozenByType[t] % 2 !== 0) frozenPairOk = false;
+        ok(frozenPairOk, '第' + lv.id + '关 冰冻成对');
+        ok(frozenTotal === (fixed.f ? fixed.f.length : 0), '第' + lv.id + '关 冰冻数量与固定数据一致');
+      } else {
+        ok(frozenTotal === 0, '第' + lv.id + '关 无冰冻');
+      }
+
       const counts = {};
       let total = 0;
       for (let r = 1; r <= game.rows; r++) for (let c = 1; c <= game.cols; c++) {

@@ -39,11 +39,12 @@ var wx = {
   onTouchEnd: function (fn) { touchHandlers.end = fn; },
   getStorageSync: function (k) { return memStore[k] !== undefined ? memStore[k] : ''; },
   setStorageSync: function (k, v) { memStore[k] = v; },
-  createInnerAudioContext: function () { return { stop: function(){}, play: function(){}, seek: function(){}, src: '', volume: 1 }; },
+  createInnerAudioContext: function () { return { stop: function(){}, pause: function(){}, play: function(){}, seek: function(){}, src: '', volume: 1 }; },
 };
 
 // ── 加载真实游戏模块（与 game.js 同顺序） ───────
 document.write('<script src="js/config.js"><\/script>');
+document.write('<script src="js/levels.js"><\/script>');
 document.write('<script src="js/storage.js"><\/script>');
 document.write('<script src="js/pathChecker.js"><\/script>');
 document.write('<script src="js/audio.js"><\/script>');

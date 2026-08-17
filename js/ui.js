@@ -13,10 +13,9 @@
       Main.winData = null;
     },
 
-    /** 显示关卡选择 */
+    /** 显示关卡选择（保留上次浏览的页码） */
     showLevelSelect: function () {
       Main.page = 'levels';
-      Main.levelScrollY = 0;
       Main.game = null;
     },
 
@@ -38,6 +37,27 @@
       Main.winData = null;
     },
 
+    /** 选关界面翻页：dir = 1 下一页 / -1 上一页（带动画） */
+    flipLevelPage: function (dir) {
+      var M = Main;
+      if (M.page !== 'levels') return;
+      // 动画进行中忽略连点，避免页面状态错乱
+      if (M.levelPageAnim > 0 && M.levelPageAnim < 1) return;
+      var perPage = GameGlobal.LEVELS_PER_PAGE;
+      var totalPages = Math.ceil(GameGlobal.TOTAL_LEVELS / perPage);
+      var target = M.levelPage + dir;
+      if (target < 0 || target >= totalPages) return; // 边界页不响应
+
+      M.levelPageFrom = M.levelPage;
+      M.levelPageTo = target;
+      M.levelPageDir = dir;
+      M.levelPageAnim = 0.0001; // 触发动画
+      GameGlobal.Tween.to(M, { levelPageAnim: 1 }, 300, 'easeInOut', function () {
+        M.levelPage = M.levelPageTo;
+        M.levelPageAnim = 0;
+      });
+    },
+
     /** 购买商品（id 以 buy_ 开头） */
     buyItem: function (itemId) {
       var items = GameGlobal.SHOP_ITEMS;
@@ -50,15 +70,21 @@
         }
         GameGlobal.Storage.addTool(item.tool, item.amount);
         Main.showToast('购买成功：' + item.name);
+        GameGlobal.SoundManager.play('coin');
         return;
       }
     },
 
     /** 全局按钮分发 */
     onAction: function (id) {
+      // 按钮点击音（游戏内工具按钮有各自专属音效，不重复播）
+      if (id.indexOf('btn_') !== 0 && id.indexOf('buy_') !== 0) {
+        GameGlobal.SoundManager.play('click');
+      }
       switch (id) {
         case 'menu_start':
           // 从最新解锁的关卡开始（首次为第 1 关）
+          Main.gameFrom = 'menu'; // 主界面进入 → 游戏内"返回"回主界面
           UI.startLevel(GameGlobal.Storage.getUnlockedLevels());
           break;
         case 'menu_levels':
@@ -75,11 +101,19 @@
         case 'levels_back':
           UI.showMenu();
           break;
+        case 'levels_prev':
+          UI.flipLevelPage(-1);
+          break;
+        case 'levels_next':
+          UI.flipLevelPage(1);
+          break;
         case 'shop_back':
           UI.showMenu();
           break;
         case 'game_back':
-          UI.showMenu();
+          // 游戏内返回：主界面"开始游戏"进的 → 回主界面；选关界面进的 → 回选关界面
+          if (Main.gameFrom === 'menu') UI.showMenu();
+          else UI.showLevelSelect();
           break;
         case 'win_home':
           UI.showMenu();
@@ -98,6 +132,18 @@
             }
           }
           break;
+        case 'win_share':
+          // 胜利后分享：必须在用户点击事件中调用，wx.shareAppMessage 才能正常触发
+          if (Main.winData) {
+            var wd = Main.winData;
+            var title = '我 ' + wd.moves + ' 步通关"水果连连看"第' + wd.levelId + '关，速来挑战！';
+            try {
+              wx.shareAppMessage({ title: title });
+            } catch (e) {
+              Main.showToast('分享功能不可用');
+            }
+          }
+          break;
         default:
           // 商店购买
           if (id.indexOf('buy_') === 0) {
@@ -107,7 +153,10 @@
           // 关卡选择
           if (id.indexOf('lv_') === 0) {
             var lv = parseInt(id.substring(3), 10);
-            if (!isNaN(lv)) UI.startLevel(lv);
+            if (!isNaN(lv)) {
+              Main.gameFrom = 'levels'; // 选关界面进入 → 游戏内"返回"回选关界面
+              UI.startLevel(lv);
+            }
             break;
           }
           // 游戏内工具按钮

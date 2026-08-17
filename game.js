@@ -4,6 +4,7 @@
  * main.js 加载完成后自动启动游戏。
  */
 require('./js/config.js');
+require('./js/levels.js');
 require('./js/storage.js');
 require('./js/pathChecker.js');
 require('./js/audio.js');

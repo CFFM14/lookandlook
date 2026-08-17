@@ -92,6 +92,42 @@ def gen_click():
     return sweep(600, 500, 0.05, 0.2)
 
 
+def gen_select():
+    """选中卡片：880Hz 短促轻音 65ms"""
+    return sweep(880, 640, 0.065, 0.18)
+
+
+def gen_coin():
+    """金币：D6 短音 + G6 尾音（叮~）"""
+    n1 = sine(1174.66, 0.07, 0.22)
+    n2 = pad(sine(1567.98, 0.12, 0.22), int(SR * 0.06))
+    return mix(n1, n2, total=int(SR * 0.3))
+
+
+def gen_slide():
+    """重力滑动：三角波 350->120Hz 柔滑下滑"""
+    return sweep(350, 120, 0.15, 0.16, wave_type="triangle")
+
+
+def gen_sweep():
+    """打乱洗牌：白噪声下滑扫频 0.18s"""
+    out = []
+    n = int(SR * 0.18)
+    for i in range(n):
+        t = i / 0.18
+        f = 500 - 420 * (t / 0.18)
+        v = random.random() * 2 - 1
+        out.append(0.15 * v * math.sin(2 * math.pi * f * (i / SR)) * math.exp(-2.5 * i / n))
+    return out
+
+
+def gen_hint():
+    """提示：E5->A5 双音上升（叮咚）"""
+    n1 = sweep(659.25, 880, 0.09, 0.2)
+    n2 = pad(sweep(880, 1108.73, 0.1, 0.2), int(SR * 0.11))
+    return mix(n1, n2, total=int(SR * 0.32))
+
+
 def gen_fail():
     """匹配失败：400->200Hz 正弦 0.2s 衰减"""
     return sweep(400, 200, 0.2, 0.25)
@@ -133,6 +169,11 @@ SOUNDS = {
     "fail.wav": gen_fail,
     "bomb.wav": gen_bomb,
     "win.wav": gen_win,
+    "select.wav": gen_select,
+    "coin.wav": gen_coin,
+    "slide.wav": gen_slide,
+    "sweep.wav": gen_sweep,
+    "hint.wav": gen_hint,
 }
 
 

@@ -15,18 +15,30 @@
       this._initialized = true;
       this._enabled = GameGlobal.Storage.getSoundOn();
 
-      var names = ['elim', 'thaw', 'click', 'fail', 'bomb', 'win'];
+      var names = ['elim', 'thaw', 'click', 'fail', 'bomb', 'win', 'select', 'coin', 'slide', 'sweep', 'hint'];
       for (var i = 0; i < names.length; i++) {
         var name = names[i];
         try {
           var ctx = wx.createInnerAudioContext();
-          ctx.src = 'audio/' + name + '.wav';
+          ctx.src = 'audio/' + name + '.mp3';
           // 提前解码，减少首次播放延迟
           ctx.volume = 1;
           this._ctxs[name] = ctx;
         } catch (e) {
           this._ctxs[name] = null;
         }
+      }
+
+      // 背景音乐（循环播放，音量压低不抢音效）
+      try {
+        var bgm = wx.createInnerAudioContext();
+        bgm.src = 'audio/bgm.mp3';
+        bgm.loop = true;
+        bgm.volume = 0.45;
+        this._ctxs['bgm'] = bgm;
+        if (this._enabled) this.playBgm();
+      } catch (e) {
+        this._ctxs['bgm'] = null;
       }
     },
 
@@ -37,9 +49,37 @@
     setEnabled: function (on) {
       this._enabled = !!on;
       GameGlobal.Storage.setSoundOn(this._enabled);
+      if (this._enabled) {
+        this.playBgm();
+      } else {
+        this.stopBgm();
+      }
     },
 
-    /** 播放音效：'elim'|'thaw'|'click'|'fail'|'bomb'|'win' */
+    /** 播放背景音乐（从暂停处继续） */
+    playBgm: function () {
+      var bgm = this._ctxs['bgm'];
+      if (!bgm || !this._enabled) return;
+      try {
+        bgm.play();
+      } catch (e) {
+        // 忽略
+      }
+    },
+
+    /** 暂停背景音乐 */
+    stopBgm: function () {
+      var bgm = this._ctxs['bgm'];
+      if (!bgm) return;
+      try {
+        if (bgm.pause) bgm.pause();
+        else bgm.stop();
+      } catch (e) {
+        // 忽略
+      }
+    },
+
+    /** 播放音效：'elim'|'thaw'|'click'|'fail'|'bomb'|'win'|'select'|'coin'|'slide'|'sweep'|'hint' */
     play: function (name) {
       if (!this._enabled) return;
       var ctx = this._ctxs[name];

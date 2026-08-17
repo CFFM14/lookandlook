@@ -202,24 +202,25 @@
       if (iceAlpha > 0.01) {
         ctx.save();
         ctx.globalAlpha = Math.min(1, iceAlpha);
-        // 裁剪到卡片范围内，防止斜线/冰面画到相邻卡片上
-        ctx.beginPath();
-        ctx.rect(x, y, size, size);
+        // 冰壳：比卡片内缩一圈（6%）+ 圆角，露出水果卡片边缘
+        var pad = Math.max(2, size * 0.06);
+        var ix = x + pad, iy = y + pad, isz = size - pad * 2;
+        this.roundRectPath(ix, iy, isz, isz, isz * 0.2);
         ctx.clip();
         ctx.fillStyle = 'rgba(180, 225, 255, 0.62)';
-        ctx.fillRect(x, y, size, size);
-        // 斜线纹理（只在卡片内部斜切，不越界）
+        ctx.fillRect(ix, iy, isz, isz);
+        // 斜线纹理（只在冰壳内部斜切，不越界）
         ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-        ctx.lineWidth = Math.max(1, size * 0.045);
+        ctx.lineWidth = Math.max(1, isz * 0.045);
         for (var i = 0; i < 3; i++) {
           ctx.beginPath();
-          ctx.moveTo(x + i * size * 0.5, y);
-          ctx.lineTo(x + (i + 1) * size * 0.5, y + size);
+          ctx.moveTo(ix + i * isz * 0.5, iy);
+          ctx.lineTo(ix + (i + 1) * isz * 0.5, iy + isz);
           ctx.stroke();
         }
         // 顶部高光条
         ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        ctx.fillRect(x, y, size, size * 0.22);
+        ctx.fillRect(ix, iy, isz, isz * 0.22);
         ctx.restore();
       }
 
@@ -388,12 +389,13 @@
       this.drawBackground('bg_menu');
       var cx = GameGlobal.DESIGN_W / 2;
       var ctx = this.ctx;
+      var safeTop = GameGlobal.SAFE_TOP || 0;
 
-      // 右上角金币
-      this.drawCoinBadge(GameGlobal.DESIGN_W - 14, 36, GameGlobal.Storage.getCoins());
+      // 右上角金币（随安全区下移，避免顶到刘海）
+      this.drawCoinBadge(GameGlobal.DESIGN_W - 14, 36 + safeTop, GameGlobal.Storage.getCoins());
 
       // 标题
-      this.drawImageCentered('title_menu', cx, 250, 340, 260);
+      this.drawImageCentered('title_menu', cx, 250 + Math.floor(safeTop / 2), 340, 260);
 
       // 开始游戏
       this.drawTextButton(cx - 130, 400, 260, 72, '开始游戏', { id: 'menu_start', fontSize: 26 });
@@ -424,45 +426,34 @@
       this.drawText(text, rx - w / 2, ry + 1, 16, '#B8860B', 'center', true);
     },
 
-    /** 关卡列表布局：两列卡片 + 滚动范围（设计坐标） */
-    getLevelListMetrics: function () {
-      var cardW = 132, cardH = 132, gap = 12, rowGap = 16;
+    /** 选关界面分页参数（2 列 × 5 行，每页 10 关）
+     *  卡片区随 SAFE_TOP 下移（与顶部标题/返回保持一致，避免刘海屏遮挡重叠），
+     *  卡片高度动态压缩，保证底部始终不撞翻页按钮（y=758 上方留 20px）。 */
+    getLevelPageMetrics: function () {
+      var safeTop = GameGlobal.SAFE_TOP || 0;
+      var cardW = 146, gap = 12, rowGap = 14;
+      var startY = 122 + safeTop;
+      var avail = 738 - startY; // 卡片区可用高度（翻页按钮顶 758 - 20 间隙）
+      var cardH = Math.max(84, Math.min(110, Math.floor((avail - 4 * rowGap) / 5)));
       var startX = (GameGlobal.DESIGN_W - cardW * 2 - gap) / 2;
-      var startY = 124;
-      var rows = Math.ceil(GameGlobal.TOTAL_LEVELS / 2);
-      var contentBottom = startY + rows * (cardH + rowGap) - rowGap;
-      // 底部给提示文字留 60 设计像素
-      var scrollMax = Math.max(0, contentBottom - (GameGlobal.DESIGN_H - 60));
-      return { cardW: cardW, cardH: cardH, gap: gap, rowGap: rowGap, startX: startX, startY: startY, rows: rows, contentBottom: contentBottom, scrollMax: scrollMax };
+      return { cardW: cardW, cardH: cardH, gap: gap, rowGap: rowGap, startX: startX, startY: startY, cols: 2, rows: 5 };
     },
 
-    /** 关卡选择（卡片列表可上下滑动） */
-    renderLevelSelect: function () {
-      this.drawBackground('bg_menu');
-      var cx = GameGlobal.DESIGN_W / 2;
-      var unlocked = GameGlobal.Storage.getUnlockedLevels();
-
-      this.drawText('选择关卡', cx, 70, 30, '#8B5A2B', 'center', true);
-      this.drawTextButton(20, 44, 70, 40, '返回', { id: 'levels_back', fontSize: 16 });
-
-      var m = this.getLevelListMetrics();
+    /** 绘制一页关卡（offX 为整页水平偏移，翻页动画 / 拖拽预览用） */
+    drawLevelPage: function (pageIdx, offX, unlocked) {
+      var perPage = GameGlobal.LEVELS_PER_PAGE;
+      var m = this.getLevelPageMetrics();
       var cardW = m.cardW, cardH = m.cardH, gap = m.gap, rowGap = m.rowGap;
       var startX = m.startX, startY = m.startY;
-      var scrollMax = m.scrollMax;
+      var begin = pageIdx * perPage;
+      var end = Math.min(begin + perPage, GameGlobal.TOTAL_LEVELS);
 
-      // 滚动位置收敛（拖动越界后回弹）
-      if (scrollMax > 0) {
-        Main.levelScrollY = Math.max(-scrollMax, Math.min(0, Main.levelScrollY));
-      } else {
-        Main.levelScrollY = 0;
-      }
-      var scrollY = Main.levelScrollY;
-
-      for (var i = 0; i < GameGlobal.TOTAL_LEVELS; i++) {
+      for (var i = begin; i < end; i++) {
         var lv = GameGlobal.LEVELS[i];
-        var col = i % 2, row = Math.floor(i / 2);
-        var x = startX + col * (cardW + gap);
-        var y = startY + row * (cardH + rowGap) + scrollY;
+        var idxInPage = i - begin;
+        var col = idxInPage % 2, row = Math.floor(idxInPage / 2);
+        var x = startX + col * (cardW + gap) + offX;
+        var y = startY + row * (cardH + rowGap);
         var locked = lv.id > unlocked;
 
         var id = 'lv_' + lv.id;
@@ -477,7 +468,7 @@
         ctx.translate(-(x + cardW / 2), -(y + cardH / 2));
 
         // 卡片底
-        this.roundRectPath(x, y, cardW, cardH, 16);
+        this.roundRectPath(x, y, cardW, cardH, 14);
         ctx.fillStyle = locked ? 'rgba(160,160,160,0.85)' : 'rgba(255,245,222,0.95)';
         ctx.fill();
         ctx.lineWidth = 2;
@@ -487,32 +478,86 @@
         // 难度星
         var starStr = '';
         for (var s = 0; s < 3; s++) starStr += s < lv.difficulty ? '★' : '☆';
-        this.drawText(starStr, x + cardW / 2, y + 18, 14, locked ? '#999' : '#F5A623', 'center', false);
+        this.drawText(starStr, x + cardW / 2, y + 14, 13, locked ? '#999' : '#F5A623', 'center', false);
 
         if (locked) {
-          this.drawText('第' + lv.id + '关', x + cardW / 2, y + cardH / 2 - 8, 18, '#FFF', 'center', true);
-          this.drawText('🔒', x + cardW / 2, y + cardH / 2 + 26, 24, '#FFF', 'center', false);
+          this.drawText('第' + lv.id + '关', x + cardW / 2, y + 38, 17, '#FFF', 'center', true);
+          this.drawText('🔒', x + cardW / 2, y + 66, 22, '#FFF', 'center', false);
         } else {
-          this.drawText('第' + lv.id + '关', x + cardW / 2, y + 46, 16, '#8B5A2B', 'center', true);
-          this.drawText(lv.name, x + cardW / 2, y + 72, 19, '#D2691E', 'center', true);
-          // 最佳成绩
+          this.drawText('第' + lv.id + '关', x + cardW / 2, y + 34, 15, '#8B5A2B', 'center', true);
+          this.drawText(lv.name, x + cardW / 2, y + 58, 18, '#D2691E', 'center', true);
           var best = GameGlobal.Storage.getBestScore(lv.id);
           if (best) {
             this.drawText('最佳：' + best.moves + '步 ' + best.elapsed + 's',
-              x + cardW / 2, y + cardH - 16, 11, '#A08060', 'center', false);
+              x + cardW / 2, y + 86, 11, '#A08060', 'center', false);
           } else {
-            this.drawText('尚未通关', x + cardW / 2, y + cardH - 16, 11, '#C0A080', 'center', false);
+            this.drawText('尚未通关', x + cardW / 2, y + 86, 11, '#C0A080', 'center', false);
           }
         }
         ctx.restore();
       }
+    },
 
-      // 上滑提示（列表可滚动时显示，滚到底后消失）
-      if (scrollMax > 0 && Main.levelScrollY > -scrollMax) {
-        this.drawText('⬆ 上滑查看更多关卡', cx, 792, 13, 'rgba(139,90,43,0.6)', 'center', false);
+    /** 关卡选择（分页翻页式：每页 10 关，左右按钮 / 滑动切换，带动画与页码指示器） */
+    renderLevelSelect: function () {
+      this.drawBackground('bg_menu');
+      var cx = GameGlobal.DESIGN_W / 2;
+      var W = GameGlobal.DESIGN_W;
+      var unlocked = GameGlobal.Storage.getUnlockedLevels();
+      var perPage = GameGlobal.LEVELS_PER_PAGE;
+      var totalPages = Math.ceil(GameGlobal.TOTAL_LEVELS / perPage);
+      var safeTop = GameGlobal.SAFE_TOP || 0;
+
+      this.drawText('选择关卡', cx, 70 + safeTop, 30, '#8B5A2B', 'center', true);
+      this.drawTextButton(20, 44 + safeTop, 70, 40, '返回', { id: 'levels_back', fontSize: 16 });
+
+      // 页码收敛到合法范围
+      if (Main.levelPage > totalPages - 1) Main.levelPage = totalPages - 1;
+      if (Main.levelPage < 0) Main.levelPage = 0;
+
+      var anim = Main.levelPageAnim;
+      var inAnim = anim > 0 && anim < 1;
+      var ctx = this.ctx;
+
+      // 页面内容：动画中同时绘制新旧两页（位移 + 淡入淡出）；静止时绘制当前页（含拖拽偏移）
+      if (inAnim) {
+        var dir = Main.levelPageDir;
+        ctx.save();
+        ctx.globalAlpha = 1 - anim;
+        this.drawLevelPage(Main.levelPageFrom, -dir * anim * W, unlocked);
+        ctx.restore();
+        ctx.save();
+        ctx.globalAlpha = anim;
+        this.drawLevelPage(Main.levelPageTo, dir * (1 - anim) * W, unlocked);
+        ctx.restore();
+      } else {
+        var dragOff = Main._levelDragging ? Main._levelDragX : 0;
+        this.drawLevelPage(Main.levelPage, dragOff, unlocked);
       }
 
-      this.drawText('每关玩法不同，通关解锁下一关', cx, 820, 14, 'rgba(139,90,43,0.65)', 'center', false);
+      // 左右翻页按钮（动画中 / 边界页置灰）—— 与控制区其他元素垂直错开，互不遮挡
+      var animBusy = inAnim;
+      var prevDisabled = Main.levelPage <= 0;
+      var nextDisabled = Main.levelPage >= totalPages - 1;
+      this.drawTextButton(28, 758, 54, 44, '◀', {
+        id: 'levels_prev', fontSize: 20,
+        bg: (prevDisabled || animBusy) ? 'rgba(205,195,175,0.85)' : '#FFE9A8',
+        border: '#B0A080', textColor: '#8B5A2B',
+      });
+      this.drawTextButton(W - 28 - 54, 758, 54, 44, '▶', {
+        id: 'levels_next', fontSize: 20,
+        bg: (nextDisabled || animBusy) ? 'rgba(205,195,175,0.85)' : '#FFE9A8',
+        border: '#B0A080', textColor: '#8B5A2B',
+      });
+
+      // 页码指示器（当前页 / 总页数）—— 独立一行，位于翻页按钮下方
+      this.roundRectPath(cx - 70, 812, 140, 30, 15);
+      ctx.fillStyle = 'rgba(255,246,224,0.9)';
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#E8B34B';
+      ctx.stroke();
+      this.drawText((Main.levelPage + 1) + ' / ' + totalPages, cx, 827, 15, '#8B5A2B', 'center', true);
     },
 
     /** 商店 */
@@ -521,14 +566,16 @@
       var cx = GameGlobal.DESIGN_W / 2;
       var ctx = this.ctx;
       var coins = GameGlobal.Storage.getCoins();
+      var safeTop = GameGlobal.SAFE_TOP || 0;
 
-      this.drawTextButton(20, 44, 70, 40, '返回', { id: 'shop_back', fontSize: 16 });
-      this.drawText('🏪 商店', cx, 60, 30, '#8B5A2B', 'center', true);
-      this.drawCoinBadge(GameGlobal.DESIGN_W - 14, 44, coins);
+      this.drawTextButton(20, 44 + safeTop, 70, 40, '返回', { id: 'shop_back', fontSize: 16 });
+      this.drawText('🏪 商店', cx, 60 + safeTop, 30, '#8B5A2B', 'center', true);
+      this.drawCoinBadge(GameGlobal.DESIGN_W - 14, 44 + safeTop, coins);
 
       var cardW = 168, cardH = 196, gapX = 16, gapY = 18;
       var startX = (GameGlobal.DESIGN_W - cardW * 2 - gapX) / 2;
-      var startY = 110;
+      // 商品卡区随 SAFE_TOP 下移，避免与顶部"返回"/标题/金币徽章重叠（与选关页同源问题）
+      var startY = 110 + safeTop;
       var toolIcons = { hint: '💡', shuffle: '🔀', bomb: '💣' };
 
       for (var i = 0; i < GameGlobal.SHOP_ITEMS.length; i++) {
@@ -575,14 +622,15 @@
       var now = Main.lastTime;
       var ctx = this.ctx;
       withButtons = withButtons !== false;
+      var safeTop = GameGlobal.SAFE_TOP || 0;
 
       // 顶部信息栏
       if (withButtons) {
-        this.drawTextButton(16, 28, 68, 40, '返回', { id: 'game_back', fontSize: 15 });
+        this.drawTextButton(16, 28 + safeTop, 68, 40, '返回', { id: 'game_back', fontSize: 15 });
       }
       this.drawText('第' + game.levelId + '关 · ' + game.cfg.name,
-        GameGlobal.DESIGN_W / 2, 48, 20, '#7A4A1F', 'center', true);
-      this.drawText('⏱ ' + game.getElapsed() + 's', GameGlobal.DESIGN_W - 30, 48, 17, '#7A4A1F', 'right', false);
+        GameGlobal.DESIGN_W / 2, 48 + safeTop, 20, '#7A4A1F', 'center', true);
+      this.drawText('⏱ ' + game.getElapsed() + 's', GameGlobal.DESIGN_W - 30, 48 + safeTop, 17, '#7A4A1F', 'right', false);
 
       // 卡片（先画，连线需要覆盖在卡片上方）
       for (var r = 1; r <= game.rows; r++) {
@@ -773,7 +821,7 @@
       // 最佳成绩卡（第三卡）
       var best = GameGlobal.Storage.getBestScore(winData.levelId);
       var isBest = !!best && best.moves === winData.moves && best.elapsed === winData.elapsed;
-      var bestText = best ? best.moves + '步 · ' + best.elapsed + 's' : '—';
+      var bestText = best ? best.moves + '步·' + best.elapsed + 's' : '—';
       this.drawStatCard(cardsX + 2 * (cardW + cardGap), cardsY, cardW, cardH,
         isBest ? '🏆 新纪录' : '🏆 最佳', bestText, '', isBest);
 
@@ -807,12 +855,17 @@
           shadow: 'rgba(230,150,30,0.5)', bottomBar: '#D98A1A', radius: 16,
         });
       }
-      this.drawTextButton(bx, py + 358, btnW, 48, '再玩一次', {
+      this.drawTextButton(bx, py + 356, btnW, 44, '📣 炫耀一下', {
+        id: 'win_share', fontSize: 20,
+        bg: '#FFFDF4', border: '#E8B34B', textColor: '#8B5A2B',
+        shadow: 'rgba(180,140,60,0.25)', radius: 14,
+      });
+      this.drawTextButton(bx, py + 406, btnW, 44, '再玩一次', {
         id: 'win_replay', fontSize: 20,
         bg: '#FFFDF4', border: '#E8B34B', textColor: '#8B5A2B',
-        shadow: 'rgba(180,140,60,0.25)', radius: 15,
+        shadow: 'rgba(180,140,60,0.25)', radius: 14,
       });
-      this.drawTextButton(bx, py + 418, btnW, 38, '返回首页', {
+      this.drawTextButton(bx, py + 458, btnW, 32, '返回首页', {
         id: 'win_home', fontSize: 16,
         bg: 'rgba(0,0,0,0)', border: 'transparent', textColor: '#A08050',
       });
@@ -839,7 +892,13 @@
       ctx.stroke();
 
       this.drawText(label, x + w / 2, y + 26, 13, highlight ? '#C87E0F' : '#A08060', 'center', true);
-      this.drawText(value, x + w / 2, y + 62, 24, highlight ? '#D98A1A' : '#5D4037', 'center', true);
+      // 数值自适应字号：文字太长（如“12步·20s”）自动缩小，保证不出框
+      var valueSize = 24;
+      if (ctx.measureText) {
+        var maxW = w - 14;
+        while (valueSize > 12 && ctx.measureText(value).width > maxW) valueSize -= 1;
+      }
+      this.drawText(value, x + w / 2, y + 62, valueSize, highlight ? '#D98A1A' : '#5D4037', 'center', true);
       if (sub) {
         this.drawText(sub, x + w / 2 + (value.length + 1) * 6, y + 62, 13, '#A08060', 'center', false);
       }

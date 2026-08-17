@@ -35,7 +35,7 @@ global.wx = {
   getStorageSync: (k) => (memStore[k] !== undefined ? memStore[k] : ''),
   setStorageSync: (k, v) => { memStore[k] = v; },
   createInnerAudioContext: () => ({
-    stop() {}, seek() {}, play() {},
+    stop() {}, pause() {}, seek() {}, play() {},
     set src(v) {}, set volume(v) {},
   }),
 };
@@ -44,6 +44,7 @@ global.requestAnimationFrame = () => {};
 
 // ── 加载全部游戏模块（与 game.js 相同顺序）─────
 require('../js/config.js');
+require('../js/levels.js');
 require('../js/storage.js');
 require('../js/pathChecker.js');
 require('../js/audio.js');
@@ -73,7 +74,25 @@ async function main() {
   check(typeof GameGlobal.PathChecker === 'object', 'PathChecker 已挂载');
   check(typeof GameGlobal.Game === 'function', 'Game 类已挂载');
   check(typeof GameGlobal.Main === 'object', 'Main 已挂载');
-  check(GameGlobal.LEVELS.length === 16, '16 个关卡配置');
+  check(GameGlobal.LEVELS.length === 576, '576 个关卡配置');
+  check(GameGlobal.getLevelConfig(576) && GameGlobal.getLevelConfig(576).id === 576, '可获取第 576 关配置');
+  check(GameGlobal.LEVEL_LAYOUTS && Object.keys(GameGlobal.LEVEL_LAYOUTS).length === 576, '固定关卡数据 576 关');
+
+  // 固定性：同一关两次开局，棋盘与冰冻位置必须完全一致
+  {
+    const gA = new GameGlobal.Game(1);
+    const gB = new GameGlobal.Game(1);
+    let sameGrid = true;
+    let sameFrozen = true;
+    for (let r = 1; r <= gA.rows; r++) {
+      for (let c = 1; c <= gA.cols; c++) {
+        if (gA.grid[r][c] !== gB.grid[r][c]) sameGrid = false;
+        if ((gA.frozen[r][c] === 1) !== (gB.frozen[r][c] === 1)) sameFrozen = false;
+      }
+    }
+    check(sameGrid, '固定关卡：同一关两次开局棋盘一致');
+    check(sameFrozen, '固定关卡：同一关两次开局冰冻一致');
+  }
 
   await waitReady();
   console.log('[B] 启动');
@@ -156,9 +175,9 @@ async function main() {
   // 渲染 win 前的动画帧
   for (let i = 0; i < 3; i++) { GameGlobal.Main.update(16); GameGlobal.Main.render(); }
 
-  // 关卡选择页
+  // 关卡选择页（游戏内返回 → 选关界面，而非主菜单）
   GameGlobal.UI.onAction('game_back');
-  check(GameGlobal.Main.page === 'menu', '返回首页');
+  check(GameGlobal.Main.page === 'levels', '游戏返回进入选关界面');
   GameGlobal.UI.onAction('menu_levels');
   check(GameGlobal.Main.page === 'levels', '进入关卡选择');
   GameGlobal.Main.render();
