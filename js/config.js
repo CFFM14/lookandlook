@@ -33,96 +33,112 @@ GameGlobal.FRUIT_NAMES = [
 GameGlobal.LEVELS = (function () {
   var HANDBOOK = [
     {
+      // 第1关【水果初识】：经典连连看入门，无重力、无冰冻，6 种水果（4×6 网格），点两张相同水果连线消除
       id: 1, name: '水果初识', desc: '轻松入门，认识水果', difficulty: 1,
       rows: 6, cols: 4, fruitTypeCount: 6,
       gravity: null, frozenRatio: 0,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第2关【果果下坠】：经典玩法 + 下坠重力，消除后水果向下掉落补充空位（8 种水果）
       id: 2, name: '果果下坠', desc: '消除后水果会往下掉落哦', difficulty: 1,
       rows: 8, cols: 6, fruitTypeCount: 8,
       gravity: 'down', frozenRatio: 0,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第3关【果果上浮】：经典玩法 + 上浮重力，消除后水果向上飘动（8 种水果）
       id: 3, name: '果果上浮', desc: '消除后水果向上飘动', difficulty: 2,
       rows: 8, cols: 6, fruitTypeCount: 8,
       gravity: 'up', frozenRatio: 0,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第4关【左移风暴】：经典玩法 + 左移重力，消除后水果向左滑动（10 种水果，5 列）
       id: 4, name: '左移风暴', desc: '消除后水果向左移动', difficulty: 2,
       rows: 8, cols: 5, fruitTypeCount: 10,
       gravity: 'left', frozenRatio: 0,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第5关【右移风暴】：经典玩法 + 右移重力，消除后水果向右滑动（10 种水果，5 列）
       id: 5, name: '右移风暴', desc: '消除后水果向右移动', difficulty: 3,
       rows: 8, cols: 5, fruitTypeCount: 10,
       gravity: 'right', frozenRatio: 0,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第6关【冰封之果】：约 30% 冰冻卡片，冰住的果子要点两下才能消除，无重力（入门冰关）
       id: 6, name: '冰封之果', desc: '冰住的果子要点击两次才能消除', difficulty: 3,
       rows: 7, cols: 6, fruitTypeCount: 10,
       gravity: null, frozenRatio: 0.3,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第7关【下坠冰雨】：下坠重力 + 冰（25%），下落与破冰双重操作
       id: 7, name: '下坠冰雨', desc: '下坠 + 冰块，双重考验！', difficulty: 3,
       rows: 8, cols: 6, fruitTypeCount: 8,
       gravity: 'down', frozenRatio: 0.25,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第8关【上浮冰晶】：上浮重力 + 冰（25%），水果上飘同时破冰
       id: 8, name: '上浮冰晶', desc: '上浮 + 冰块，越玩越难', difficulty: 3,
       rows: 8, cols: 6, fruitTypeCount: 10,
       gravity: 'up', frozenRatio: 0.25,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第9关【左移冰川】：左移重力 + 冰（30%），向左滑动并破冰
       id: 9, name: '左移冰川', desc: '左移 + 冰块，冰封挑战', difficulty: 4,
       rows: 8, cols: 6, fruitTypeCount: 10,
       gravity: 'left', frozenRatio: 0.3,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第10关【终极冰暴】：右移重力 + 冰（30%），8 行大棋盘，向右滑动破冰
       id: 10, name: '终极冰暴', desc: '右移 + 冰块，终极试炼！', difficulty: 4,
       rows: 8, cols: 6, fruitTypeCount: 12,
       gravity: 'right', frozenRatio: 0.3,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第11关【寒潮下坠】：下坠重力 + 更厚冰（35%），冰更多更难
       id: 11, name: '寒潮下坠', desc: '更冷的坠落，更厚的冰', difficulty: 4,
       rows: 8, cols: 6, fruitTypeCount: 10,
       gravity: 'down', frozenRatio: 0.35,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第12关【寒潮上浮】：上浮重力 + 厚冰（35%）
       id: 12, name: '寒潮上浮', desc: '冰晶上飘，寒意逼人', difficulty: 4,
       rows: 8, cols: 6, fruitTypeCount: 10,
       gravity: 'up', frozenRatio: 0.35,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第13关【左移寒潮】：左移重力 + 厚冰（35%）
       id: 13, name: '左移寒潮', desc: '寒潮向左席卷而来', difficulty: 4,
       rows: 8, cols: 6, fruitTypeCount: 10,
       gravity: 'left', frozenRatio: 0.35,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第14关【右移寒潮】：右移重力 + 深冻（40%），12 种水果，难度拉满
       id: 14, name: '右移寒潮', desc: '右移 + 深冻，寸步难行', difficulty: 5,
       rows: 8, cols: 6, fruitTypeCount: 12,
       gravity: 'right', frozenRatio: 0.4,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第15关【极地冰牢】：下坠重力 + 厚冰（40%），9 行棋盘，九层冰墙
       id: 15, name: '极地冰牢', desc: '九层冰墙，冰封挑战', difficulty: 5,
       rows: 9, cols: 6, fruitTypeCount: 10,
       gravity: 'down', frozenRatio: 0.4,
       hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     },
     {
+      // 第16关【万果归一】：右移重力 + 深冻（40%），12 种水果，最终试炼关
       id: 16, name: '万果归一', desc: '终极冰封王座，最后的试炼！', difficulty: 5,
       rows: 9, cols: 6, fruitTypeCount: 12,
       gravity: 'right', frozenRatio: 0.4,
@@ -159,6 +175,7 @@ GameGlobal.LEVELS = (function () {
   //   'downRight' 右下 | 'downLeft' 左下 | 'upRight' 右上 | 'upLeft' 左上
   // 第 17~20 关：纯斜坠落（无冰）
   levels.push({
+    // 第17关【右下坠】：斜向重力演示关，消除后水果沿对角线向右下滑落（无冰）
     id: 17,
     name: '右下坠',
     desc: '斜向右下角坠落',
@@ -168,6 +185,7 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
   levels.push({
+    // 第18关【左下坠】：斜向重力演示关，水果向左下滑落（无冰）
     id: 18,
     name: '左下坠',
     desc: '斜向左下角坠落',
@@ -177,6 +195,7 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
   levels.push({
+    // 第19关【右上坠】：斜向重力演示关，水果向右上滑落（无冰）
     id: 19,
     name: '右上坠',
     desc: '斜向右上角坠落',
@@ -186,6 +205,7 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
   levels.push({
+    // 第20关【左上坠】：斜向重力演示关，水果向左上滑落（无冰）
     id: 20,
     name: '左上坠',
     desc: '斜向左上角坠落',
@@ -196,6 +216,7 @@ GameGlobal.LEVELS = (function () {
   });
   // 第 21~24 关：冰 + 斜坠落（0.3 冰冻，成对冻结保证可解）
   levels.push({
+    // 第21关【右下冰坠】：斜向重力（右下）+ 冰（30%），下落同时破冰
     id: 21,
     name: '右下冰坠',
     desc: '斜向右下角坠落，还有冰块！',
@@ -205,6 +226,7 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
   levels.push({
+    // 第22关【左下冰坠】：斜向重力（左下）+ 冰（30%）
     id: 22,
     name: '左下冰坠',
     desc: '斜向左下角坠落，还有冰块！',
@@ -214,6 +236,7 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
   levels.push({
+    // 第23关【右上冰坠】：斜向重力（右上）+ 冰（30%）
     id: 23,
     name: '右上冰坠',
     desc: '斜向右上角坠落，还有冰块！',
@@ -223,6 +246,7 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
   levels.push({
+    // 第24关【左上冰坠】：斜向重力（左上）+ 冰（30%），斜向重力关收尾
     id: 24,
     name: '左上冰坠',
     desc: '斜向左上角坠落，还有冰块！',

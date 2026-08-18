@@ -648,7 +648,7 @@
       // 粒子
       this.drawParticles();
 
-      // 底部工具区（结算页不注册这些按钮）——按钮加大 + 剩余次数角标 + 库存不足变灰
+      // 底部工具区（结算页不注册这些按钮）——按钮加大 + 剩余次数角标（用完不置灰，点击会提示去商店购买）
       if (withButtons) {
         var btnSize = 78;
         var bottomY = GameGlobal.DESIGN_H - 104;
@@ -663,14 +663,6 @@
           if (!td.enabled) continue;
           var count = tools[td.key] || 0;
           this.drawImageButton(td.x, bottomY, btnSize, btnSize, td.img, td.id);
-          if (count <= 0) {
-            // 库存不足：灰色蒙层
-            ctx.save();
-            ctx.fillStyle = 'rgba(90, 90, 100, 0.45)';
-            this.roundRectPath(td.x, bottomY, btnSize, btnSize, 12);
-            ctx.fill();
-            ctx.restore();
-          }
           // 次数角标（右上角小圆，略微向左下偏移贴近按钮）
           ctx.save();
           ctx.beginPath();
