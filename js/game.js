@@ -481,7 +481,7 @@
     var moves = [];
     if (!dir) return moves;
 
-    // 对角线（往角）重力：先竖直塌落贴边，再水平塌落贴边，最终堆到角落
+    // 对角线（往角）重力：卡片只沿对角线朝角落滑落，撞墙也不改走竖直/水平方向
     if (dir === 'downRight' || dir === 'downLeft' || dir === 'upRight' || dir === 'upLeft') {
       return this.applyDiagonalGravity(dir);
     }
@@ -529,10 +529,9 @@
   };
 
   /**
-   * 对角线（往角落）重力：每张卡优先沿对角线滑向目标角落；若对角被挡，
-   * 则贴着已到达的那面墙继续朝角落滑（沿竖直边滑、或沿水平边滑），
-   * 反复塌落直到所有卡都无法再靠近角落为止。最终所有卡堆在对应角落，
-   * 呈现「沿对角线坠落、堆进角落」的效果。
+   * 对角线（往角落）重力：每张卡只沿对角线朝目标角落滑落，绝不改走竖直/水平方向。
+   * 反复塌落直到所有卡都无法再沿对角线靠近角落为止。最终呈现「纯斜向坠落」的效果
+   * （卡片沿对角线流向角落，撞墙即停，不再沿墙上下左右滑动）。
    * 支持 4 个对角方向：'downRight'（右下）| 'downLeft'（左下）| 'upRight'（右上）| 'upLeft'（左上）
    * @returns [{card, fr, fc, tr, tc}] 需要动画的移动列表
    */
@@ -560,14 +559,8 @@
     function nextCell(r, c) {
       var nr = vDown ? r + 1 : r - 1;
       var nc = hRight ? c + 1 : c - 1;
-      // 1) 对角滑落
+      // 仅沿对角线朝角落滑落；撞到墙也不改走竖直/水平方向，保持「纯斜向坠落」
       if (nr >= 1 && nr <= R && nc >= 1 && nc <= C && !pos[nr][nc]) return { r: nr, c: nc };
-      // 2) 竖直已贴边 → 沿水平方向朝角落滑
-      var wr = vDown ? r + 1 : r - 1;
-      if ((wr < 1 || wr > R) && nc >= 1 && nc <= C && !pos[r][nc]) return { r: r, c: nc };
-      // 3) 水平已贴边 → 沿竖直方向朝角落滑
-      var wc = hRight ? c + 1 : c - 1;
-      if ((wc < 1 || wc > C) && nr >= 1 && nr <= R && !pos[nr][c]) return { r: nr, c: c };
       return null;
     }
 
