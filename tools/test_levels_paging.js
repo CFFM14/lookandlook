@@ -67,7 +67,7 @@ async function main() {
   const totalPages = Math.ceil(GameGlobal.TOTAL_LEVELS / perPage);
 
   console.log('[A] 分页结构');
-  check(totalPages === 48, `总页数 = 48（576/${perPage}，实际 ${totalPages}）`);
+  check(totalPages === 2, `总页数 = 2（17/${perPage}，实际 ${totalPages}）`);
 
   UI.showLevelSelect();
   M.render();
@@ -98,7 +98,7 @@ async function main() {
   check(M.levelPage === totalPages - 1 && M.levelPageAnim === 0, '最后一页不能向后翻（边界拦截）');
   M.render();
   const last = lvIds();
-  check(last.includes('lv_576'), '最后一页包含第 576 关');
+  check(last.includes('lv_17'), '最后一页包含第 17 关');
 
   console.log('[D] 水平滑动手势');
   M.levelPage = 0; M.levelPageAnim = 0; M._levelDragX = 0; M._levelDragging = false;

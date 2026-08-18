@@ -11,9 +11,16 @@
   var KEY_COINS = 'look_coins';
   var KEY_TOOLS = 'look_tools';
 
+  // ╔══════════════════════════════════════════════════════════╗
+  // ║ 测试开关：true = 所有关卡直接解锁（方便测试，进任意关）    ║
+  // ║ 正式发布 / 交作业前请改回 false，否则会跳过正常解锁进度！  ║
+  // ╚══════════════════════════════════════════════════════════╝
+  var UNLOCK_ALL_FOR_TEST = true;
+
   var Storage = {
     /** 读取已解锁的关卡数（至少 1，最多 TOTAL_LEVELS） */
     getUnlockedLevels: function () {
+      if (UNLOCK_ALL_FOR_TEST) return GameGlobal.TOTAL_LEVELS; // 测试期：全解锁
       try {
         var raw = wx.getStorageSync(KEY_UNLOCK);
         var val = raw ? parseInt(raw, 10) : 1;

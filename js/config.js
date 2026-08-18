@@ -1,5 +1,5 @@
 /**
- * config.js —— 全局配置：常量 + 576 个关卡定义 + 网格尺寸自适应
+ * config.js —— 全局配置：常量 + 20 个关卡（16 固定 + 4 斜重力）定义 + 网格尺寸自适应
  *
  * 坐标系统（Canvas 2D，y 轴向下为正）：
  *   逻辑索引 1..ROWS / 1..COLS 为卡片，0 与 ROWS+1 / COLS+1 为外围可穿越空区域
@@ -27,9 +27,8 @@ GameGlobal.FRUIT_NAMES = [
 
 /**
  * 关卡配置：前 16 关为手调配好的经典关（1普通 → 2下坠 → 3上浮 → 4左移 → 5右移 → 6冰冻…），
- * 第 17~576 关由确定性算法生成：24 个章节 × 每章 24 关，
- * 覆盖 5 种重力（无/下坠/上浮/左移/右移）× 4 档冰冻（0/0.2/0.3/0.4），
- * 棋盘规格（40→54 张卡）与水果种类数随全局进度单调递增，难度只升不降。
+ * 第 17~20 关为 4 个斜向（对角线）重力演示关「对角坠果」（消除后水果分别滑向 右下/左下/右上/左上 角）。
+ * 不再自动生成 17~576 的随机关卡。
  */
 GameGlobal.LEVELS = (function () {
   var HANDBOOK = [
@@ -131,90 +130,77 @@ GameGlobal.LEVELS = (function () {
     },
   ];
 
-  var GRAVITIES = [null, 'down', 'up', 'left', 'right'];
-  var FROZEN = [0, 0.2, 0.3, 0.4];
-  // 17 种棋盘规格（行×列，卡片总数为偶数），按卡片数从小到大排列。
-  // 末尾两档（10×6=60、10×7=70）为终章大型棋盘，让后期关卡卡片数可继续超过手工关峰值（54）
-  var SHAPES = [
-    [4, 4], [4, 5], [5, 4], [4, 6], [6, 4], [7, 4], [5, 6], [6, 5],
-    [8, 4], [6, 6], [9, 4], [8, 5], [7, 6], [8, 6], [9, 6], [10, 6], [10, 7],
-  ];
-  // 24 个场景词：同一章节内每关取一个，保证 576 关名称互不重复
-  var SCENES = [
-    '春晓', '微风', '拾光', '星语', '晨曦', '夏夜', '山岚', '云海',
-    '枫红', '霜降', '雪落', '冰晶', '银河', '月影', '花语', '果香',
-    '蜜语', '清泉', '霓虹', '琥珀', '苍穹', '星辰', '远方', '心晴',
-  ];
-  // 章节主题词：重力 + 冰冻档位
-  var THEMES = {
-    'null_0': '果缘', 'down_0': '下坠', 'up_0': '上浮', 'left_0': '左移', 'right_0': '右移',
-    'null_0.2': '微冰', 'down_0.2': '冰坠', 'up_0.2': '冰浮', 'left_0.2': '冰移', 'right_0.2': '冰驰',
-    'null_0.3': '寒霜', 'down_0.3': '寒坠', 'up_0.3': '寒浮', 'left_0.3': '寒袭', 'right_0.3': '寒驰',
-    'null_0.4': '极冻', 'down_0.4': '深坠', 'up_0.4': '深浮', 'left_0.4': '深移', 'right_0.4': '深驰',
-  };
-  // 最后 4 个章节（20~23）为终章主题
-  var FINALE_THEMES = ['冰皇', '坠渊', '浮天', '疾袭'];
+  /**
+   * 重力可选值（gravity）：
+   *   经典/无：null
+   *   单轴：'down' 下坠 / 'up' 上浮 / 'left' 左移 / 'right' 右移
+   *   斜向（往角落）：'downRight' 右下 / 'downLeft' 左下 / 'upRight' 右上 / 'upLeft' 左上
+   * 冰冻档位（frozenRatio）：0（无）/ 0.2 / 0.3 / 0.4
+   */
   var GRAVITY_DESC = {
     null: '经典连连看，眼疾手快',
     down: '消除后水果会往下掉落',
     up: '消除后水果向上飘动',
     left: '消除后水果向左移动',
     right: '消除后水果向右移动',
-  };
-  var FROZEN_DESC = {
-    0: '', 0.2: '，少量冰块要配对两次', 0.3: '，冰封来袭', 0.4: '，深层冰冻挑战',
+    downRight: '消除后水果沿对角线向右下滑落（斜向坠落）',
+    downLeft: '消除后水果沿对角线向左下滑落（斜向坠落）',
+    upRight: '消除后水果沿对角线向右上滑落（斜向坠落）',
+    upLeft: '消除后水果沿对角线向左上滑落（斜向坠落）',
   };
 
   var levels = [];
   for (var h = 0; h < HANDBOOK.length; h++) levels.push(HANDBOOK[h]);
 
-  for (var i = 17; i <= 576; i++) {
-    var k = i - 17;               // 全局序号 0..559（跨章节单调推进）
-    var c = Math.floor(k / 24);   // 章节 0..23
-    var p = k % 24;               // 章内序号 0..23
-    var gravity = GRAVITIES[c % 5];
-    var frozenTier = Math.min(3, Math.floor(c / 5));
-    var frozenRatio = FROZEN[frozenTier];
+  // ── 斜向（往角落）重力关：紧跟 16 固定关之后，作为第 17 关 ──
+  // 消除后水果沿对角线滑向角落，演示斜向坠落。
+  // 想换方向改 gravity 即可：
+  //   'downRight' 右下  | 'downLeft' 左下 | 'upRight' 右上 | 'upLeft' 左上
+  levels.push({
+    id: 17,
+    name: '右下坠',
+    desc: '斜向右下角坠落，还有冰块！',
+    difficulty: 3,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'downRight', frozenRatio: 0.3,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  });
+  // ── 其余三个斜向角：18 左下 / 19 右上 / 20 左上 ──
+  // 与第 17 关同一 8×6 棋盘、冰 0，仅重力方向不同，方便对比 4 个角的坠落效果。
+  levels.push({
+    id: 18,
+    name: '左下坠',
+    desc: '斜向左下角坠落，还有冰块！',
+    difficulty: 3,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'downLeft', frozenRatio: 0.3,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  });
+  levels.push({
+    id: 19,
+    name: '右上坠',
+    desc: '斜向右上角坠落，还有冰块！',
+    difficulty: 3,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'upRight', frozenRatio: 0.3,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  });
+  levels.push({
+    id: 20,
+    name: '左上坠',
+    desc: '斜向左上角坠落，还有冰块！',
+    difficulty: 3,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'upLeft', frozenRatio: 0.3,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  });
 
-    // 棋盘规格：随全局序号 k 单调递增（核心修复）。
-    // 原实现按章内序号 p 在 15 档棋盘间循环，每章开头都退回最小棋盘，
-    // 导致后置关卡（如第 41 关 16 张）相对前置关卡（第 40 关 54 张）卡片数与难度断崖下降；
-    // 终章特殊覆盖（c>=20 时从 8 档起步）同样造成终章开局弱于前一章末尾。
-    // 现改为 k 从 0→559 平滑推进 SHAPES[13]→[16]（48→54→60→70 张卡），全程只增不减，
-    // 起点（48 张）紧贴手工关峰值（16 关 54 张），终章（第 20~23 章）为全程最大的 70 张棋盘。
-    var shapeIdx = 13 + Math.floor(k * 4 / 560);
-    if (shapeIdx > 16) shapeIdx = 16;
-
-    var rows = SHAPES[shapeIdx][0];
-    var cols = SHAPES[shapeIdx][1];
-    var pairs = rows * cols / 2;
-    // 水果种类数只随棋盘档位单调（去掉原章内回环的 p % 3 扰动），上限 12 种
-    var fruitTypeCount = Math.max(3, Math.min(pairs, 3 + shapeIdx));
-    if (fruitTypeCount > 12) fruitTypeCount = 12;
-    // 难度 = 棋盘档位分 + 重力阶段分 + 冰冻档位分，各分量随章节单调不减 → 总难度只升不降。
-    // （重力分量原为 gravity?1:0，会随 c%5 循环在“无重力章”回落，改以章节阶段判断）
-    var difficulty = 2 + Math.floor(shapeIdx / 3) + (c >= 5 ? 1 : 0) + (frozenRatio >= 0.3 ? 1 : 0);
-    if (difficulty > 5) difficulty = 5;
-
-    var theme = c >= 20 ? FINALE_THEMES[c - 20] : THEMES[gravity + '_' + frozenRatio];
-    var desc = GRAVITY_DESC[gravity] + FROZEN_DESC[frozenRatio] + (c >= 20 ? '，终章终极试炼！' : '');
-
-    levels.push({
-      id: i,
-      name: theme + '·' + SCENES[p],
-      desc: desc,
-      difficulty: difficulty,
-      rows: rows, cols: cols, fruitTypeCount: fruitTypeCount,
-      gravity: gravity, frozenRatio: frozenRatio,
-      hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
-    });
-  }
   return levels;
 })();
 
 GameGlobal.TOTAL_LEVELS = GameGlobal.LEVELS.length;
 
-/** 选关界面每页显示的关卡数（2 列 × 5 行 = 10 关/页，576 关 → 58 页） */
+/** 选关界面每页显示的关卡数（2 列 × 5 行 = 10 关/页，17 关 → 2 页） */
 GameGlobal.LEVELS_PER_PAGE = 10;
 
 /** 根据关卡编号获取配置 */

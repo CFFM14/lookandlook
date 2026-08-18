@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>水果连连看 · 运行流程图</title>
+<style>
+  body { margin:0; background:#f7f8fa; color:#1f2937;
+         font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color:#6b7280; font-size: 13px; margin: 0 0 18px; }
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+          padding:18px; margin-bottom:26px; box-shadow:0 1px 3px rgba(0,0,0,.05); }
+  .card h2 { font-size:16px; margin:0 0 4px; }
+  .card .note { font-size:12px; color:#6b7280; margin:0 0 12px; line-height:1.6; }
+  svg { width:100%; height:auto; display:block; }
+  .legend { display:flex; flex-wrap:wrap; gap:14px; font-size:12px;
+            color:#374151; margin:6px 0 0; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .sw { width:14px; height:14px; border-radius:4px; border:1.5px solid; }
+  .tip { background:#fffbeb; border:1px solid #fde68a; border-radius:10px;
+         padding:12px 14px; font-size:13px; color:#92400e; line-height:1.7; }
+  /* SVG 配色 */
+  .screen { fill:#dbeafe; stroke:#2563eb; }
+  .sys    { fill:#dcfce7; stroke:#16a34a; }
+  .player { fill:#ffedd5; stroke:#ea580c; }
+  .decide { fill:#fef9c3; stroke:#ca8a04; }
+  .txt    { font-size:13px; fill:#1f2937; font-weight:600; }
+  .txts   { font-size:11px; fill:#374151; }
+  .lab    { font-size:11px; fill:#6b7280; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>水果连连看 · 运行流程图</h1>
+  <p class="sub">这个游戏的运行 = 外层「屏幕切换」+ 内层「一局里点卡片」。两张图分开看就懂。</p>
+
+  <div class="tip">
+    👉 给小白的一句话：你平时<strong>改数据</strong>（关卡、金币、图片）就够了，不需要钻进下面这些箭头里。
+    流程图的用处是：万一游戏「点了没反应 / 不跳关 / 不通关」，你能照图猜出是哪一环出了问题。
+  </div>
+
+  <!-- ===================== 图 1：页面流转 ===================== -->
+  <div class="card">
+    <h2>图 1 · 五个画面之间怎么跳（外层循环）</h2>
+    <p class="note">启动后游戏进入「主循环」，每秒重画约 60 次；每次画哪一屏，由变量 <code>Main.page</code> 决定。
+       点不同按钮 = 改 <code>page</code> = 切换画面。实线=前进，虚线=返回。</p>
+    <svg viewBox="0 0 780 720" role="img">
+      <defs>
+        <marker id="ar" markerWidth="10" markerHeight="10" refX="8" refY="3"
+                orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#475569"/>
+        </marker>
+        <marker id="ard" markerWidth="10" markerHeight="10" refX="8" refY="3"
+                orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#9ca3af"/>
+        </marker>
+      </defs>
+
+      <!-- 启动 -->
+      <rect class="sys" x="285" y="14" width="210" height="50" rx="12"/>
+      <text class="txt" x="390" y="38" text-anchor="middle">启动 → Main.init()</text>
+      <text class="txts" x="390" y="54" text-anchor="middle">读屏幕·加载图·绑触摸·开主循环</text>
+
+      <!-- menu -->
+      <rect class="screen" x="285" y="92" width="210" height="62" rx="12"/>
+      <text class="txt" x="390" y="116" text-anchor="middle">首页 MENU</text>
+      <text class="txts" x="390" y="134" text-anchor="middle">开始 / 选关 / 商店 / 音效</text>
+
+      <!-- levels -->
+      <rect class="screen" x="520" y="210" width="210" height="62" rx="12"/>
+      <text class="txt" x="625" y="234" text-anchor="middle">选关 LEVELS</text>
+      <text class="txts" x="625" y="252" text-anchor="middle">翻页·点关卡进入</text>
+
+      <!-- shop -->
+      <rect class="screen" x="50" y="210" width="210" height="62" rx="12"/>
+      <text class="txt" x="155" y="234" text-anchor="middle">商店 SHOP</text>
+      <text class="txts" x="155" y="252" text-anchor="middle">花金币买道具</text>
+
+      <!-- game -->
+      <rect class="screen" x="285" y="372" width="210" height="62" rx="12"/>
+      <text class="txt" x="390" y="396" text-anchor="middle">游戏 GAME</text>
+      <text class="txts" x="390" y="414" text-anchor="middle">new Game(关卡) 铺棋盘</text>
+
+      <!-- win -->
+      <rect class="screen" x="285" y="560" width="210" height="62" rx="12"/>
+      <text class="txt" x="390" y="584" text-anchor="middle">结算 WIN</text>
+      <text class="txts" x="390" y="602" text-anchor="middle">首页/重玩/下一关/分享</text>
+
+      <!-- 实线前进 -->
+      <path d="M390,64 L390,92" stroke="#475569" stroke-width="2" marker-end="url(#ar)"/>
+      <text class="lab" x="398" y="82">开始游戏</text>
+
+      <path d="M495,123 C560,123 540,210 520,210" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+      <text class="lab" x="556" y="168">选关</text>
+
+      <path d="M285,123 C220,123 240,210 260,210" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+      <text class="lab" x="150" y="168">商店</text>
+
+      <path d="M635,272 C710,340 540,360 495,372" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+      <text class="lab" x="660" y="330">点关卡进游戏</text>
+
+      <path d="M390,434 L390,560" stroke="#475569" stroke-width="2" marker-end="url(#ar)"/>
+      <text class="lab" x="398" y="500">胜利</text>
+
+      <!-- 虚线返回 -->
+      <path d="M520,210 C450,150 470,92 495,92" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#ard)"/>
+      <text class="lab" x="430" y="150">返回</text>
+
+      <path d="M260,210 C330,150 310,92 285,92" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#ard)"/>
+      <text class="lab" x="250" y="150">返回</text>
+
+      <path d="M285,403 C200,330 320,140 285,92" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#ard)"/>
+      <text class="lab" x="150" y="250">返回(首页/选关)</text>
+
+      <path d="M285,591 C180,520 360,140 285,154" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#ard)"/>
+      <text class="lab" x="120" y="380">win_home 回首页</text>
+
+      <path d="M495,591 C600,520 470,440 495,434" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#ard)"/>
+      <text class="lab" x="540" y="510">重玩/下一关</text>
+    </svg>
+
+    <div class="legend">
+      <span><i class="sw screen"></i>画面（page）</span>
+      <span><i class="sw sys"></i>系统动作</span>
+      <span>实线=前进　虚线=返回</span>
+    </div>
+  </div>
+
+  <!-- ===================== 图 2：点卡片循环 ===================== -->
+  <div class="card">
+    <h2>图 2 · 一局游戏里点卡片发生了什么（内层循环）</h2>
+    <p class="note">玩家每点一次屏幕 → <code>handleTap</code> 先判是不是按钮 → 否则找到卡片 → <code>game.onTapCard</code> 处理。
+       配对成功才会消除；消到全空才通关。实线=正常推进，虚线=回到「等待点击」继续玩。</p>
+    <svg viewBox="0 0 780 1180" role="img">
+      <defs>
+        <marker id="ar2" markerWidth="10" markerHeight="10" refX="8" refY="3"
+                orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#475569"/>
+        </marker>
+        <marker id="ard2" markerWidth="10" markerHeight="10" refX="8" refY="3"
+                orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#9ca3af"/>
+        </marker>
+      </defs>
+
+      <!-- 进入游戏 -->
+      <rect class="sys" x="225" y="20" width="330" height="54" rx="12"/>
+      <text class="txt" x="390" y="44" text-anchor="middle">进入游戏：new Game(关卡)</text>
+      <text class="txts" x="390" y="62" text-anchor="middle">按关卡数据铺棋盘（卡片+冰块）</text>
+
+      <!-- 等待点击 -->
+      <rect class="player" x="265" y="104" width="250" height="48" rx="12"/>
+      <text class="txt" x="390" y="133" text-anchor="middle">等待玩家点击屏幕</text>
+
+      <!-- 菱形：点到按钮？ -->
+      <polygon class="decide" points="390,190 520,232 390,274 260,232"/>
+      <text class="txt" x="390" y="228" text-anchor="middle" font-size="12">handleTap</text>
+      <text class="txt" x="390" y="244" text-anchor="middle" font-size="12">点到按钮?</text>
+
+      <!-- 按钮动作 -->
+      <rect class="player" x="540" y="204" width="220" height="56" rx="12"/>
+      <text class="txt" x="650" y="226" text-anchor="middle">onAction 执行按钮</text>
+      <text class="txts" x="650" y="244" text-anchor="middle">提示/重排/炸弹/返回</text>
+
+      <!-- onTapCard -->
+      <rect class="sys" x="235" y="320" width="310" height="54" rx="12"/>
+      <text class="txt" x="390" y="344" text-anchor="middle">onTapCard(r,c) 选牌</text>
+      <text class="txts" x="390" y="362" text-anchor="middle">没选→选第一张；点同张→取消</text>
+
+      <!-- 菱形：类型相同？ -->
+      <polygon class="decide" points="390,418 510,460 390,502 270,460"/>
+      <text class="txt" x="390" y="456" text-anchor="middle" font-size="12">两张类型</text>
+      <text class="txt" x="390" y="472" text-anchor="middle" font-size="12">相同?</text>
+
+      <!-- 菱形：能连线？ -->
+      <polygon class="decide" points="390,560 530,602 390,644 250,602"/>
+      <text class="txt" x="390" y="598" text-anchor="middle" font-size="12">PathChecker</text>
+      <text class="txt" x="390" y="614" text-anchor="middle" font-size="12">能连(≤2拐)?</text>
+
+      <!-- 消除 -->
+      <rect class="sys" x="215" y="700" width="350" height="56" rx="12"/>
+      <text class="txt" x="390" y="724" text-anchor="middle">eliminatePair 消除配对</text>
+      <text class="txts" x="390" y="742" text-anchor="middle">金线+音效+粒子；破冰/双消</text>
+
+      <!-- 检查胜负 -->
+      <rect class="sys" x="240" y="820" width="300" height="56" rx="12"/>
+      <text class="txt" x="390" y="844" text-anchor="middle">checkWinOrAutoClear</text>
+      <text class="txts" x="390" y="862" text-anchor="middle">死局→自动全消；还有牌→继续</text>
+
+      <!-- onWin -->
+      <rect class="sys" x="215" y="940" width="350" height="56" rx="12"/>
+      <text class="txt" x="390" y="964" text-anchor="middle">onWin 胜利</text>
+      <text class="txts" x="390" y="982" text-anchor="middle">解锁下一关·记最佳·发金币·烟花</text>
+
+      <!-- 结算面板 -->
+      <rect class="screen" x="245" y="1060" width="290" height="50" rx="12"/>
+      <text class="txt" x="390" y="1090" text-anchor="middle">延迟弹结算 → page='win'</text>
+
+      <!-- 主连线 -->
+      <path d="M390,74 L390,104" stroke="#475569" stroke-width="2" marker-end="url(#ar2)"/>
+      <path d="M390,152 L390,190" stroke="#475569" stroke-width="2" marker-end="url(#ar2)"/>
+      <path d="M520,232 L540,232" stroke="#475569" stroke-width="2" marker-end="url(#ar2)"/>
+      <path d="M390,274 L390,320" stroke="#475569" stroke-width="2" marker-end="url(#ar2)"/>
+      <path d="M390,374 L390,418" stroke="#475569" stroke-width="2" marker-end="url(#ar2)"/>
+      <path d="M390,502 L390,560" stroke="#475569" stroke-width="2" marker-end="url(#ar2)"/>
+      <path d="M390,644 L390,700" stroke="#475569" stroke-width="2" marker-end="url(#ar2)"/>
+      <path d="M390,756 L390,820" stroke="#475569" stroke-width="2" marker-end="url(#ar2)"/>
+      <path d="M390,876 L390,940" stroke="#475569" stroke-width="2" marker-end="url(#ar2)"/>
+      <path d="M390,996 L390,1060" stroke="#475569" stroke-width="2" marker-end="url(#ar2)"/>
+
+      <!-- 按钮动作回等待 -->
+      <path d="M540,232 C470,180 460,150 515,128" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#ard2)"/>
+      <text class="lab" x="470" y="170">执行完回等待</text>
+
+      <!-- 不匹配回等待（类型不同） -->
+      <path d="M270,460 C150,460 150,150 260,128" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#ard2)"/>
+      <text class="lab" x="60" y="300">否：不匹配，取消选择</text>
+
+      <!-- 不匹配回等待（连不上） -->
+      <path d="M250,602 C110,610 110,150 260,128" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#ard2)"/>
+      <text class="lab" x="20" y="380">否：连不上，取消</text>
+
+      <!-- 还有牌回等待 -->
+      <path d="M240,848 C110,840 110,150 260,128" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#ard2)"/>
+      <text class="lab" x="20" y="500">还有牌：继续玩</text>
+    </svg>
+
+    <div class="legend">
+      <span><i class="sw screen"></i>画面/结算</span>
+      <span><i class="sw sys"></i>游戏逻辑</span>
+      <span><i class="sw player"></i>玩家操作/按钮</span>
+      <span><i class="sw decide"></i>判断分支</span>
+      <span>实线=推进　虚线=回到等待</span>
+    </div>
+  </div>
+
+  <div class="tip">
+    🔧 排错速查（照图定位）：<br>
+    · <strong>点了按钮没反应</strong> → 看图1，多半是 <code>ui.js</code> 的 <code>onAction</code> 没匹配到按钮 id。<br>
+    · <strong>两张一样的图连不起来</strong> → 看图2，是 <code>PathChecker.canConnect</code> 判定路径超过 2 个拐弯。<br>
+    · <strong>消完不弹结算</strong> → 看图2底部，是 <code>checkWinOrAutoClear</code> / <code>onWin</code> 没触发，或还有残留单张卡。<br>
+    · <strong>不跳关</strong> → 看图1，是 <code>onWin</code> 里 <code>unlockNextLevel</code> 没写对，或结算面板按钮 id 不对。
+  </div>
+</div>
+</body>
+</html>

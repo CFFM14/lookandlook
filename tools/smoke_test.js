@@ -74,9 +74,9 @@ async function main() {
   check(typeof GameGlobal.PathChecker === 'object', 'PathChecker 已挂载');
   check(typeof GameGlobal.Game === 'function', 'Game 类已挂载');
   check(typeof GameGlobal.Main === 'object', 'Main 已挂载');
-  check(GameGlobal.LEVELS.length === 576, '576 个关卡配置');
-  check(GameGlobal.getLevelConfig(576) && GameGlobal.getLevelConfig(576).id === 576, '可获取第 576 关配置');
-  check(GameGlobal.LEVEL_LAYOUTS && Object.keys(GameGlobal.LEVEL_LAYOUTS).length === 576, '固定关卡数据 576 关');
+  check(GameGlobal.LEVELS.length === 17, '17 个关卡配置');
+  check(GameGlobal.getLevelConfig(17) && GameGlobal.getLevelConfig(17).id === 17, '可获取第 17 关配置');
+  check(GameGlobal.LEVEL_LAYOUTS && Object.keys(GameGlobal.LEVEL_LAYOUTS).length === 17, '固定关卡数据 17 关');
 
   // 固定性：同一关两次开局，棋盘与冰冻位置必须完全一致
   {

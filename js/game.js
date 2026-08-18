@@ -481,6 +481,11 @@
     var moves = [];
     if (!dir) return moves;
 
+    // 对角线（往角）重力：先竖直塌落贴边，再水平塌落贴边，最终堆到角落
+    if (dir === 'downRight' || dir === 'downLeft' || dir === 'upRight' || dir === 'upLeft') {
+      return this.applyDiagonalGravity(dir);
+    }
+
     if (dir === 'down' || dir === 'up') {
       for (var c = 1; c <= this.cols; c++) {
         var stack = [];
@@ -520,6 +525,99 @@
         }
       }
     }
+    return moves;
+  };
+
+  /**
+   * 对角线（往角落）重力：每张卡优先沿对角线滑向目标角落；若对角被挡，
+   * 则贴着已到达的那面墙继续朝角落滑（沿竖直边滑、或沿水平边滑），
+   * 反复塌落直到所有卡都无法再靠近角落为止。最终所有卡堆在对应角落，
+   * 呈现「沿对角线坠落、堆进角落」的效果。
+   * 支持 4 个对角方向：'downRight'（右下）| 'downLeft'（左下）| 'upRight'（右上）| 'upLeft'（左上）
+   * @returns [{card, fr, fc, tr, tc}] 需要动画的移动列表
+   */
+  Game.prototype.applyDiagonalGravity = function (dir) {
+    var moves = [];
+    var R = this.rows, C = this.cols;
+    var vDown = (dir === 'downRight' || dir === 'downLeft');   // 竖直朝「下」还是「上」
+    var hRight = (dir === 'downRight' || dir === 'upRight');  // 水平朝「右」还是「左」
+
+    // start：每张卡起点（不被模拟改动）；cur：模拟过程中当前位置
+    var start = new Map();
+    var cur = new Map();
+    for (var r = 1; r <= R; r++) {
+      for (var c = 1; c <= C; c++) {
+        var cd = this.cardNodes[r][c];
+        if (cd) { start.set(cd, { r: r, c: c }); cur.set(cd, { r: r, c: c }); }
+      }
+    }
+    // 占位网格（存卡片引用）
+    var pos = [];
+    for (var r2 = 0; r2 <= R + 1; r2++) { pos[r2] = []; for (var c2 = 0; c2 <= C + 1; c2++) pos[r2][c2] = null; }
+    cur.forEach(function (p, card) { pos[p.r][p.c] = card; });
+
+    // 给定当前格，返回该卡朝角落能前进到的下一格；不能前进则返回 null
+    function nextCell(r, c) {
+      var nr = vDown ? r + 1 : r - 1;
+      var nc = hRight ? c + 1 : c - 1;
+      // 1) 对角滑落
+      if (nr >= 1 && nr <= R && nc >= 1 && nc <= C && !pos[nr][nc]) return { r: nr, c: nc };
+      // 2) 竖直已贴边 → 沿水平方向朝角落滑
+      var wr = vDown ? r + 1 : r - 1;
+      if ((wr < 1 || wr > R) && nc >= 1 && nc <= C && !pos[r][nc]) return { r: r, c: nc };
+      // 3) 水平已贴边 → 沿竖直方向朝角落滑
+      var wc = hRight ? c + 1 : c - 1;
+      if ((wc < 1 || wc > C) && nr >= 1 && nr <= R && !pos[nr][c]) return { r: nr, c: c };
+      return null;
+    }
+
+    // 反复塌落直到稳定（从角落往外扫描，让靠角落的卡先就位）
+    var changed = true, guard = 0;
+    var rStart = vDown ? R : 1, rEnd = vDown ? 1 : R, rStep = vDown ? -1 : 1;
+    var cStart = hRight ? C : 1, cEnd = hRight ? 1 : C, cStep = hRight ? -1 : 1;
+    while (changed && guard < R * C * 4 + 16) {
+      changed = false; guard++;
+      for (var r = rStart; vDown ? r >= rEnd : r <= rEnd; r += rStep) {
+        for (var c = cStart; hRight ? c >= cEnd : c <= cEnd; c += cStep) {
+          var card = pos[r][c];
+          if (!card) continue;
+          var nx = nextCell(r, c);
+          if (nx) {
+            pos[r][c] = null;
+            pos[nx.r][nx.c] = card;
+            var p = cur.get(card);
+            p.r = nx.r; p.c = nx.c;
+            changed = true;
+          }
+        }
+      }
+    }
+
+    // 生成 moves 并重建正式结构（grid / cardNodes / frozen / singleton）
+    var oldFrozen = this.frozen;
+    var oldSingleton = this.singletonSet;
+    var newGrid = [], newCardNodes = [], newFrozen = [], newSingleton = new Set();
+    for (var rr = 0; rr <= R + 1; rr++) {
+      newGrid[rr] = []; newCardNodes[rr] = []; newFrozen[rr] = [];
+      for (var cc = 0; cc <= C + 1; cc++) { newGrid[rr][cc] = 0; newCardNodes[rr][cc] = null; newFrozen[rr][cc] = 0; }
+    }
+    cur.forEach(function (p, card) {
+      var r = p.r, c = p.c;
+      var s = start.get(card);
+      if (s.r !== r || s.c !== c) moves.push({ card: card, fr: s.r, fc: s.c, tr: r, tc: c });
+      if (oldSingleton.has(s.r + ',' + s.c)) newSingleton.add(r + ',' + c);
+      newFrozen[r][c] = oldFrozen[s.r][s.c];
+      newGrid[r][c] = card.type;
+      newCardNodes[r][c] = card;
+      card.r = r; card.c = c;
+      var px = this.logicToPixel(r, c);
+      card.baseX = px.x; card.baseY = px.y;
+    }, this);
+
+    this.grid = newGrid;
+    this.cardNodes = newCardNodes;
+    this.frozen = newFrozen;
+    this.singletonSet = newSingleton;
     return moves;
   };
 
@@ -567,7 +665,9 @@
       maxDist = Math.max(maxDist, Math.abs(m.tr - m.fr) + Math.abs(m.tc - m.fc));
     }
     var duration = maxDist * T.GRAVITY_PER_CELL;
-    var ease = (this.cfg.gravity === 'down' || this.cfg.gravity === 'up') ? 'easeIn' : 'easeInOut';
+    var g = this.cfg.gravity;
+    // 含「下 / 上」的方向（含对角线）用下落缓动，纯左右移动用平滑缓动
+    var ease = (g && (g.indexOf('down') === 0 || g.indexOf('up') === 0)) ? 'easeIn' : 'easeInOut';
 
     for (var j = 0; j < moves.length; j++) {
       var mv = moves[j];
