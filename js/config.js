@@ -152,44 +152,81 @@ GameGlobal.LEVELS = (function () {
   var levels = [];
   for (var h = 0; h < HANDBOOK.length; h++) levels.push(HANDBOOK[h]);
 
-  // ── 斜向（往角落）重力关：紧跟 16 固定关之后，作为第 17 关 ──
-  // 消除后水果沿对角线滑向角落，演示斜向坠落。
+  // ── 斜向（往角落）重力关：紧跟 16 固定关之后，共 8 关 ──
+  // 第 17~20 关：纯斜坠落（无冰）；第 21~24 关：冰+斜坠落（0.3 冰冻）。
+  // 两批都用同一 8×6 棋盘、仅重力方向不同（控制变量对比 4 个角）。
   // 想换方向改 gravity 即可：
-  //   'downRight' 右下  | 'downLeft' 左下 | 'upRight' 右上 | 'upLeft' 左上
+  //   'downRight' 右下 | 'downLeft' 左下 | 'upRight' 右上 | 'upLeft' 左上
+  // 第 17~20 关：纯斜坠落（无冰）
   levels.push({
     id: 17,
     name: '右下坠',
-    desc: '斜向右下角坠落，还有冰块！',
+    desc: '斜向右下角坠落',
     difficulty: 3,
     rows: 8, cols: 6, fruitTypeCount: 10,
-    gravity: 'downRight', frozenRatio: 0.3,
+    gravity: 'downRight', frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
-  // ── 其余三个斜向角：18 左下 / 19 右上 / 20 左上 ──
-  // 与第 17 关同一 8×6 棋盘、冰 0，仅重力方向不同，方便对比 4 个角的坠落效果。
   levels.push({
     id: 18,
     name: '左下坠',
-    desc: '斜向左下角坠落，还有冰块！',
+    desc: '斜向左下角坠落',
     difficulty: 3,
     rows: 8, cols: 6, fruitTypeCount: 10,
-    gravity: 'downLeft', frozenRatio: 0.3,
+    gravity: 'downLeft', frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
   levels.push({
     id: 19,
     name: '右上坠',
-    desc: '斜向右上角坠落，还有冰块！',
+    desc: '斜向右上角坠落',
     difficulty: 3,
     rows: 8, cols: 6, fruitTypeCount: 10,
-    gravity: 'upRight', frozenRatio: 0.3,
+    gravity: 'upRight', frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
   levels.push({
     id: 20,
     name: '左上坠',
-    desc: '斜向左上角坠落，还有冰块！',
+    desc: '斜向左上角坠落',
     difficulty: 3,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'upLeft', frozenRatio: 0,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  });
+  // 第 21~24 关：冰 + 斜坠落（0.3 冰冻，成对冻结保证可解）
+  levels.push({
+    id: 21,
+    name: '右下冰坠',
+    desc: '斜向右下角坠落，还有冰块！',
+    difficulty: 4,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'downRight', frozenRatio: 0.3,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  });
+  levels.push({
+    id: 22,
+    name: '左下冰坠',
+    desc: '斜向左下角坠落，还有冰块！',
+    difficulty: 4,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'downLeft', frozenRatio: 0.3,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  });
+  levels.push({
+    id: 23,
+    name: '右上冰坠',
+    desc: '斜向右上角坠落，还有冰块！',
+    difficulty: 4,
+    rows: 8, cols: 6, fruitTypeCount: 10,
+    gravity: 'upRight', frozenRatio: 0.3,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+  });
+  levels.push({
+    id: 24,
+    name: '左上冰坠',
+    desc: '斜向左上角坠落，还有冰块！',
+    difficulty: 4,
     rows: 8, cols: 6, fruitTypeCount: 10,
     gravity: 'upLeft', frozenRatio: 0.3,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
