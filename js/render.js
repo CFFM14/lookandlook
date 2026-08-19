@@ -388,27 +388,89 @@
     renderMenu: function () {
       this.drawBackground('bg_menu');
       var cx = GameGlobal.DESIGN_W / 2;
+      var W = GameGlobal.DESIGN_W;
       var ctx = this.ctx;
       var safeTop = GameGlobal.SAFE_TOP || 0;
 
       // 右上角金币（随安全区下移，避免顶到刘海）
-      this.drawCoinBadge(GameGlobal.DESIGN_W - 14, 36 + safeTop, GameGlobal.Storage.getCoins());
+      this.drawCoinBadge(W - 14, 36 + safeTop, GameGlobal.Storage.getCoins());
 
       // 标题
       this.drawImageCentered('title_menu', cx, 250 + Math.floor(safeTop / 2), 340, 260);
 
-      // 开始游戏
-      this.drawTextButton(cx - 130, 400, 260, 72, '开始游戏', { id: 'menu_start', fontSize: 26 });
-      // 选择关卡
-      this.drawTextButton(cx - 130, 492, 260, 72, '选择关卡', { id: 'menu_levels', fontSize: 26 });
-      // 商店
-      this.drawTextButton(cx - 130, 584, 260, 72, '🏪 商店', { id: 'menu_shop', fontSize: 24 });
-      // 音效开关（小按钮）
-      var soundOn = Main.soundOn;
-      this.drawTextButton(cx - 100, 676, 200, 48,
-        '音效：' + (soundOn ? '开' : '关'), { id: 'menu_sound', fontSize: 18 });
+      // 悬浮动画参数：一起一伏 + 光晕呼吸
+      var t = Date.now() / 1000;
+      var bob = Math.sin(t * 2.2) * 7;          // 上下浮动 ±7px
+      var glow = 0.5 + 0.5 * Math.sin(t * 2.2); // 0~1 呼吸
 
-      this.drawText('连连看 · 水果消消乐', cx, 800, 15, 'rgba(139,90,43,0.7)', 'center', false);
+      // ── 开始游戏（大按钮，悬浮感） ──
+      var baseY = 440;
+      var startW = 300, startH = 88;
+      var startX = cx - startW / 2;
+      var startY = baseY + bob;
+      // 呼吸光晕（让按钮像浮起来一样）
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,170,50,0.9)';
+      ctx.shadowBlur = 26 + 20 * glow;
+      this.roundRectPath(startX, startY, startW, startH, 22);
+      ctx.fillStyle = 'rgba(255,190,80,' + (0.30 + 0.28 * glow) + ')';
+      ctx.fill();
+      ctx.restore();
+      this.drawTextButton(startX, startY, startW, startH, '开始游戏',
+        { id: 'menu_start', fontSize: 30, gradient: ['#FFD479', '#F4A93C'],
+          border: '#C9821F', textColor: '#7A4A1F', radius: 22,
+          shadow: 'rgba(120,70,20,0.45)', bottomBar: '#B9701A' });
+
+      // ── 选择关卡（稍小，固定在开始游戏正下方，不浮动） ──
+      var lvW = 240, lvH = 60;
+      var lvX = cx - lvW / 2;
+      var lvY = baseY + startH + 30;
+      this.drawTextButton(lvX, lvY, lvW, lvH, '选择关卡',
+        { id: 'menu_levels', fontSize: 24, gradient: ['#FFF3D6', '#FFE9A8'],
+          border: '#E8B34B', textColor: '#8B5A2B', radius: 18 });
+
+      // ── 音效键（左上角小圆按钮，与右上角金币同高） ──
+      var soundOn = Main.soundOn;
+      this.drawTextButton(16, (36 + safeTop) - 23, 46, 46,
+        soundOn ? '🔊' : '🔇', { id: 'menu_sound', radius: 23, fontSize: 22,
+          bg: 'rgba(255,245,222,0.95)', border: '#E8B34B', textColor: '#8B5A2B' });
+
+      // ── 商店（贴在大标题右侧的小标签纸，不浮动） ──
+      var titleCY = 250 + Math.floor(safeTop / 2);
+      var shopW = 48, shopH = 96;
+      var shopX = W - shopW + 8;                 // 贴着大标题右侧、探出屏幕一点点
+      var shopY = titleCY - shopH / 2;           // 与大标题同高
+      ctx.save();
+      // 轻微倾斜，像随手贴/挂上去的标签纸
+      ctx.translate(shopX + shopW / 2, shopY + shopH / 2);
+      ctx.rotate(-3 * Math.PI / 180);
+      ctx.translate(-(shopX + shopW / 2), -(shopY + shopH / 2));
+      // 纸面投影（显得浮起）
+      ctx.shadowColor = 'rgba(80,50,20,0.35)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetY = 3;
+      this.roundRectPath(shopX, shopY, shopW, shopH, 8);
+      ctx.fillStyle = '#FFFDF3';                 // 纸本色
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(180,150,110,0.8)';
+      ctx.stroke();
+      ctx.restore();
+      // 顶部打孔（吊牌孔），与文字对齐（不旋转）
+      ctx.beginPath();
+      ctx.arc(shopX + shopW / 2, shopY + 13, 5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(120,90,60,0.28)';
+      ctx.fill();
+      // 图标 + 竖排“商店”
+      this.drawText('🏪', shopX + shopW / 2, shopY + 38, 20, '#8B5A2B', 'center', false);
+      this.drawText('商', shopX + shopW / 2, shopY + 62, 15, '#8B5A2B', 'center', true);
+      this.drawText('店', shopX + shopW / 2, shopY + 80, 15, '#8B5A2B', 'center', true);
+      // 点击区域（轴对齐矩形即可）
+      Main.buttonBounds.push({ id: 'menu_shop', x: shopX, y: shopY, w: shopW, h: shopH });
+
+      this.drawText('连连看 · 水果消消乐', cx, 765, 15, 'rgba(139,90,43,0.7)', 'center', false);
     },
 
     /** 金币徽章：金色圆角 + 🪙 + 数量 */
