@@ -301,8 +301,6 @@ GameGlobal.getLevelHelp = function (cfg) {
 
   if (cfg.frozenRatio > 0) {
     lines.push('注意冰冻：被冰封的水果要先点一次破冰，再点一次才能消除。');
-  } else {
-    lines.push('本关没有冰冻，放心消除。');
   }
 
   lines.push('本关共 ' + (cfg.fruitTypeCount || 12) + ' 种水果，加油！');
