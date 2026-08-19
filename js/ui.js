@@ -35,6 +35,12 @@
       Main.game = new GameGlobal.Game(levelId);
       Main.page = 'game';
       Main.winData = null;
+      // 玩法说明弹窗：每次进入先关掉；若该关首次进入（未看过说明）则自动弹出并标记已看
+      Main.helpPopupOpen = false;
+      if (!GameGlobal.Storage.isHelpSeen(levelId)) {
+        Main.helpPopupOpen = true;
+        GameGlobal.Storage.markHelpSeen(levelId);
+      }
     },
 
     /** 选关界面翻页：dir = 1 下一页 / -1 上一页（带动画） */
@@ -111,7 +117,8 @@
           UI.showMenu();
           break;
         case 'game_back':
-          // 游戏内返回：主界面"开始游戏"进的 → 回主界面；选关界面进的 → 回选关界面
+          // 游戏内返回：主界面“开始游戏”进的 → 回主界面；选关界面进的 → 回选关界面
+          Main.helpPopupOpen = false; // 离开关卡时关闭玩法说明弹窗
           if (Main.gameFrom === 'menu') UI.showMenu();
           else UI.showLevelSelect();
           break;
@@ -143,6 +150,14 @@
               Main.showToast('分享功能不可用');
             }
           }
+          break;
+        case 'btn_help':
+          // 点击游戏内问号：打开本关玩法说明弹窗
+          Main.helpPopupOpen = true;
+          break;
+        case 'help_close':
+          // 关闭玩法说明弹窗
+          Main.helpPopupOpen = false;
           break;
         default:
           // 商店购买

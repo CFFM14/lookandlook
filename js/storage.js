@@ -10,6 +10,7 @@
   var KEY_SOUND = 'look_sound';
   var KEY_COINS = 'look_coins';
   var KEY_TOOLS = 'look_tools';
+  var KEY_HELP_SEEN_PREFIX = 'look_help_';
 
   // ╔══════════════════════════════════════════════════════════╗
   // ║ 测试开关：true = 所有关卡直接解锁（方便测试，进任意关）    ║
@@ -140,6 +141,22 @@
 
     setSoundOn: function (on) {
       wx.setStorageSync(KEY_SOUND, !!on);
+    },
+
+    /** 该关的“玩法说明”是否已在首次进入时弹出过（看过即不再自动弹） */
+    isHelpSeen: function (levelId) {
+      try {
+        return !!wx.getStorageSync(KEY_HELP_SEEN_PREFIX + levelId);
+      } catch (e) {
+        return false;
+      }
+    },
+
+    /** 标记该关的“玩法说明”已弹出过（看过） */
+    markHelpSeen: function (levelId) {
+      try {
+        wx.setStorageSync(KEY_HELP_SEEN_PREFIX + levelId, 1);
+      } catch (e) {}
     },
   };
 

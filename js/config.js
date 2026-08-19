@@ -273,6 +273,43 @@ GameGlobal.getLevelConfig = function (id) {
 };
 
 /**
+ * 生成某关的“玩法说明”文本（多行），供游戏内问号弹窗展示。
+ * 清楚告诉玩家：重力往哪个方向坠（左/右/上/下/斜向），有没有冰冻，共几种水果。
+ * @returns {string[]} 第一行是标题，其余为说明行
+ */
+GameGlobal.getLevelHelp = function (cfg) {
+  cfg = cfg || {};
+  var lines = [];
+  lines.push('第' + (cfg.id || '?') + '关 · ' + (cfg.name || ''));
+
+  var g = cfg.gravity;
+  if (!g) {
+    lines.push('这是经典连连看：消除一对水果后，其它卡片不会移动。');
+  } else {
+    var dirText = {
+      down: '水果会向下掉落，填补下方的空缺。',
+      up: '水果会向上飘动，填补上方的空缺。',
+      left: '水果会向左滑动，填补左侧的空缺。',
+      right: '水果会向右滑动，填补右侧的空缺。',
+      downRight: '水果会沿对角线向右下方滑落（斜向坠落）。',
+      downLeft: '水果会沿对角线向左下方滑落（斜向坠落）。',
+      upRight: '水果会沿对角线向右上方滑落（斜向坠落）。',
+      upLeft: '水果会沿对角线向左上方滑落（斜向坠落）。',
+    };
+    lines.push('重力方向：' + (dirText[g] || '有特殊重力，注意卡片滑动方向。'));
+  }
+
+  if (cfg.frozenRatio > 0) {
+    lines.push('注意冰冻：被冰封的水果要先点一次破冰，再点一次才能消除。');
+  } else {
+    lines.push('本关没有冰冻，放心消除。');
+  }
+
+  lines.push('本关共 ' + (cfg.fruitTypeCount || 12) + ' 种水果，加油！');
+  return lines;
+};
+
+/**
  * 网格尺寸自适应：按设计分辨率 + 顶/底部预留，计算卡片尺寸与网格左上角
  * @returns {cw, ch, gx, gy, ox, oy}
  */

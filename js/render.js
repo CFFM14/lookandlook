@@ -627,10 +627,27 @@
       // 顶部信息栏
       if (withButtons) {
         this.drawTextButton(16, 28 + safeTop, 68, 40, '返回', { id: 'game_back', fontSize: 15 });
+        // 玩法说明问号按钮（右上角圆形），点击弹出本关玩法
+        var helpX = GameGlobal.DESIGN_W - 44;
+        var helpY = 26 + safeTop;
+        var helpSz = 38;
+        var hcx = helpX + helpSz / 2, hcy = helpY + helpSz / 2;
+        var pressedHelp = Main.buttonPressed('btn_help');
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(hcx, hcy, helpSz / 2, 0, Math.PI * 2);
+        ctx.fillStyle = pressedHelp ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.88)';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#E8A93D';
+        ctx.stroke();
+        ctx.restore();
+        this.drawText('?', hcx, hcy + 1, 22, '#C8761A', 'center', true);
+        Main.buttonBounds.push({ id: 'btn_help', x: helpX, y: helpY, w: helpSz, h: helpSz });
       }
       this.drawText('第' + game.levelId + '关 · ' + game.cfg.name,
         GameGlobal.DESIGN_W / 2, 48 + safeTop, 20, '#7A4A1F', 'center', true);
-      this.drawText('⏱ ' + game.getElapsed() + 's', GameGlobal.DESIGN_W - 30, 48 + safeTop, 17, '#7A4A1F', 'right', false);
+      this.drawText('⏱ ' + game.getElapsed() + 's', GameGlobal.DESIGN_W - 62, 48 + safeTop, 17, '#7A4A1F', 'right', false);
 
       // 卡片（先画，连线需要覆盖在卡片上方）
       for (var r = 1; r <= game.rows; r++) {
@@ -915,6 +932,91 @@
       ctx.closePath();
       ctx.fill();
       ctx.restore();
+    },
+
+    /** 文本按字符自动换行（适配中文），返回多行数组 */
+    wrapText: function (text, maxWidth) {
+      var ctx = this.ctx;
+      var lines = [];
+      var line = '';
+      for (var i = 0; i < text.length; i++) {
+        var ch = text[i];
+        var test = line + ch;
+        if (ctx.measureText(test).width > maxWidth && line) {
+          lines.push(line);
+          line = ch;
+        } else {
+          line = test;
+        }
+      }
+      if (line) lines.push(line);
+      return lines;
+    },
+
+    /** 玩法说明弹窗：暗化遮罩 + 面板 + 换行说明 + “知道了”关闭按钮 */
+    renderHelpOverlay: function () {
+      var ctx = this.ctx;
+      var game = Main.game;
+      if (!game) return;
+      var helpLines = GameGlobal.getLevelHelp(game.cfg);
+      var cx = GameGlobal.DESIGN_W / 2;
+
+      // 暗化遮罩
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      ctx.fillRect(0, 0, GameGlobal.DESIGN_W, GameGlobal.DESIGN_H);
+
+      var panelW = 330, panelH = 326;
+      var px = cx - panelW / 2;
+      var py = (GameGlobal.DESIGN_H - panelH) / 2;
+
+      // 面板主体（暖金渐变 + 投影）
+      ctx.save();
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+      ctx.shadowBlur = 22;
+      this.roundRectPath(px, py, panelW, panelH, 22);
+      var g = ctx.createLinearGradient(px, py, px, py + panelH);
+      g.addColorStop(0, '#FFFDF2');
+      g.addColorStop(1, '#FFEFC4');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.restore();
+      this.roundRectPath(px, py, panelW, panelH, 22);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#E8A93D';
+      ctx.stroke();
+
+      // 标题（说明第一行）
+      this.drawText(helpLines[0], cx, py + 38, 23, '#8B5A2B', 'center', true);
+      // 分隔线
+      ctx.strokeStyle = 'rgba(232, 169, 61, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px + 34, py + 60);
+      ctx.lineTo(px + panelW - 34, py + 60);
+      ctx.stroke();
+
+      // 说明内容（从第二行起，逐行自动换行，左对齐）
+      var textX = px + 28;
+      var textW = panelW - 56;
+      var y = py + 92;
+      var lineH = 26;
+      for (var i = 1; i < helpLines.length; i++) {
+        var wrapped = this.wrapText(helpLines[i], textW);
+        for (var j = 0; j < wrapped.length; j++) {
+          this.drawText(wrapped[j], textX, y, 15, '#5D4037', 'left', false);
+          y += lineH;
+        }
+        y += 4;
+      }
+
+      // “知道了”关闭按钮
+      var btnW = panelW - 80, btnH = 46;
+      var bx = cx - btnW / 2, by = py + panelH - 62;
+      this.drawTextButton(bx, by, btnW, btnH, '知道了', {
+        id: 'help_close', fontSize: 20,
+        gradient: ['#FFD66B', '#F2A93B'], border: '#D98A1A', textColor: '#FFF',
+        radius: 16,
+      });
     },
   };
 

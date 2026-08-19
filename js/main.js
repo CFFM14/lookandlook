@@ -86,6 +86,7 @@
     soundOn: true,
     lastTime: 0,
     winShownAt: 0, // 结算面板出现时间（弹入动画基准）
+    helpPopupOpen: false, // 游戏内“玩法说明”弹窗是否打开
 
     buttonBounds: [],
     pressedId: null,
@@ -275,6 +276,17 @@
 
     handleTap: function (cx, cy) {
       var d = this.toDesign(cx, cy);
+      // 玩法说明弹窗打开时：仅“知道了”按钮可关闭；点其它地方也直接关闭，
+      // 并拦截底层按钮/卡片的点击，避免误触。
+      if (this.helpPopupOpen) {
+        var popupBtn = this.hitButton(cx, cy);
+        if (popupBtn === 'help_close') {
+          GameGlobal.UI.onAction('help_close');
+        } else {
+          this.helpPopupOpen = false;
+        }
+        return;
+      }
       // 按钮优先（最上层）
       var btn = this.hitButton(cx, cy);
       if (btn) {
@@ -302,6 +314,7 @@
     showWin: function (levelId, moves, elapsed, coinsEarned) {
       // 守卫：胜利回调延迟弹出，若玩家已离开游戏页（返回/切关）则忽略
       if (this.page !== 'game') return;
+      this.helpPopupOpen = false; // 通关时关闭玩法说明弹窗，避免覆盖结算面板
       this.winData = { levelId: levelId, moves: moves, elapsed: elapsed, coinsEarned: coinsEarned || 0 };
       this.winShownAt = Date.now();
       this.page = 'win';
@@ -342,6 +355,11 @@
         case 'shop': r.renderShop(); break;
         case 'game': r.renderGame(); break;
         case 'win': r.renderWin(); break;
+      }
+
+      // 游戏内“玩法说明”弹窗（仅在游戏页且打开时绘制，覆盖在游戏画面上方）
+      if (this.page === 'game' && this.helpPopupOpen) {
+        r.renderHelpOverlay();
       }
     },
   };
