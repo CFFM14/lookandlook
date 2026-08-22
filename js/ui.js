@@ -13,10 +13,19 @@
       Main.winData = null;
     },
 
-    /** 显示关卡选择（保留上次浏览的页码） */
+    /** 显示关卡选择（默认回到“正在解锁”的那一页 = 下一关所在页） */
     showLevelSelect: function () {
       Main.page = 'levels';
       Main.game = null;
+      // 进入选关界面时，定位到当前解锁进度的那一页，而不是停留在上次手动翻到的页
+      var perPage = GameGlobal.LEVELS_PER_PAGE;
+      var unlocked = GameGlobal.Storage.getUnlockedLevels();
+      var totalPages = Math.ceil(GameGlobal.TOTAL_LEVELS / perPage);
+      var frontierPage = Math.floor(unlocked / perPage); // 0 起；下一关（unlocked+1）所在页
+      if (frontierPage > totalPages - 1) frontierPage = totalPages - 1;
+      if (frontierPage < 0) frontierPage = 0;
+      Main.levelPage = frontierPage;
+      Main.levelPageAnim = 0; // 清掉残留翻页动画，避免回到主页再进来时画面错位
     },
 
     /** 显示商店 */

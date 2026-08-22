@@ -1,5 +1,10 @@
+# 本地 agent / 工具工作数据（不入库）
 .workbuddy/
 
-# 游戏未使用的废弃资源（已回退为 png/jpg/mp3）
-*.webp
-audio/*.wav
+# 备份与临时文件
+*.bak
+Thumbs.db
+.DS_Store
+
+# 依赖（若以后引入）
+node_modules/
