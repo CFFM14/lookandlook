@@ -191,6 +191,15 @@
       }
       x += dx;
 
+      // 分区边框（多分区关）：卡片底下垫一圈分区色，一眼看出所属区域
+      var game0 = Main.game;
+      if (game0 && game0.zoneCount > 1 && card.zone !== undefined) {
+        var zc = (GameGlobal.ZONE_COLORS || [])[card.zone] || '#999';
+        this.roundRectPath(x - 2.5, y - 2.5, size + 5, size + 5, Math.max(6, size * 0.18));
+        ctx.fillStyle = zc;
+        ctx.fill();
+      }
+
       // 水果卡图：素材本身已包含卡片底座，直接铺满格子（不再叠加程序绘制的底座）
       var img = this.images['fruit_' + (card.type < 10 ? '0' : '') + card.type];
       if (img) {
@@ -260,6 +269,93 @@
     },
 
     // ══════════════════════════════════════════════
+    //  新玩法绘制：形状地板 / 特殊格 / 能力徽章
+    // ══════════════════════════════════════════════
+
+    /** 形状棋盘地板：存在的格子画底板（镂空不画，图案自然显现）；特殊格染对应色 */
+    drawBoardFloor: function (game) {
+      var ctx = this.ctx;
+      var m = game.metrics;
+      var sz = m.cw + 6;
+      for (var r = 1; r <= game.rows; r++) {
+        for (var c = 1; c <= game.cols; c++) {
+          if (!game.shape[r] || !game.shape[r][c]) continue;
+          var p = game.logicToPixel(r, c);
+          var sp = game.specialMap && game.specialMap[r][c];
+          this.roundRectPath(p.x - sz / 2, p.y - sz / 2, sz, sz, 10);
+          if (sp) {
+            var def = GameGlobal.SPECIAL_DEFS[sp];
+            ctx.fillStyle = def.color;
+            ctx.globalAlpha = game.unlocked[sp] ? 0.95 : 0.4;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          } else {
+            ctx.fillStyle = 'rgba(255,255,255,0.42)';
+            ctx.fill();
+          }
+        }
+      }
+    },
+
+    /** 特殊格角标：格子右上角小圆章（折/穿/跨），有卡片压着时也可见；解锁后点亮描金 */
+    drawSpecialBadges: function (game) {
+      var ctx = this.ctx;
+      var m = game.metrics;
+      for (var r = 1; r <= game.rows; r++) {
+        for (var c = 1; c <= game.cols; c++) {
+          var sp = game.specialMap && game.specialMap[r] && game.specialMap[r][c];
+          if (!sp) continue;
+          var def = GameGlobal.SPECIAL_DEFS[sp];
+          var on = game.unlocked[sp];
+          var p = game.logicToPixel(r, c);
+          var bx = p.x + m.cw / 2 - 4, by = p.y - m.cw / 2 + 4;
+          var rad = Math.max(8, m.cw * 0.16);
+          ctx.save();
+          if (on) { ctx.shadowColor = def.color; ctx.shadowBlur = 8; }
+          ctx.beginPath();
+          ctx.arc(bx, by, rad, 0, Math.PI * 2);
+          ctx.fillStyle = on ? def.color : 'rgba(120,120,130,0.85)';
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = on ? '#FFE28A' : 'rgba(255,255,255,0.75)';
+          ctx.stroke();
+          this.drawText(def.glyph, bx, by + 1, Math.max(10, rad * 1.1), '#FFF', 'center', true);
+          ctx.restore();
+        }
+      }
+    },
+
+    /** 能力徽章（HUD）：折/穿/跨 三枚小圆片，解锁后点亮，位于计时下方右侧 */
+    drawAbilityChips: function (game) {
+      var ctx = this.ctx;
+      var safeTop = GameGlobal.SAFE_TOP || 0;
+      var keys = ['fold', 'pierce', 'cross'];
+      var rad = 13, gap = 8;
+      var totalW = keys.length * rad * 2 + (keys.length - 1) * gap;
+      var x0 = GameGlobal.DESIGN_W - 16 - totalW + rad;
+      var y = 78 + safeTop;
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        var def = GameGlobal.SPECIAL_DEFS[k];
+        var on = game.unlocked[k];
+        var cx = x0 + i * (rad * 2 + gap);
+        ctx.save();
+        if (on) { ctx.shadowColor = def.color; ctx.shadowBlur = 8; }
+        ctx.beginPath();
+        ctx.arc(cx, y, rad, 0, Math.PI * 2);
+        ctx.fillStyle = on ? def.color : 'rgba(150,150,150,0.45)';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = on ? '#FFE28A' : 'rgba(255,255,255,0.6)';
+        ctx.stroke();
+        this.drawText(def.glyph, cx, y + 1, 13, on ? '#FFF' : 'rgba(255,255,255,0.75)', 'center', true);
+        ctx.restore();
+      }
+    },
+
+    // ══════════════════════════════════════════════
     //  粒子系统
     // ══════════════════════════════════════════════
 
@@ -279,10 +375,13 @@
       }
     },
 
-    drawParticles: function () {
+    drawParticles: function (space) {
       var ctx = this.ctx;
       for (var i = 0; i < this.particles.length; i++) {
         var p = this.particles[i];
+        // 粒子分层：'board' 随镜头（棋盘坐标），'design' 固定在屏幕（设计坐标）
+        var pSpace = p.space || 'board';
+        if (space && pSpace !== space) continue;
         var alpha = Math.max(0, Math.min(1, p.life / p.maxLife));
         ctx.save();
         ctx.globalAlpha = alpha;
@@ -322,6 +421,7 @@
           color: colors[i % colors.length],
           type: 'dot',
           gravity: 150,
+          space: 'board',
         });
       }
     },
@@ -342,6 +442,7 @@
           rot: Math.random() * Math.PI,
           vr: 6 + Math.random() * 6,
           gravity: 260,
+          space: 'board',
         });
       }
     },
@@ -360,11 +461,12 @@
           color: i % 3 === 0 ? '#FFD54A' : i % 3 === 1 ? '#FF8A3D' : '#FF6B35',
           type: 'dot',
           gravity: 120,
+          space: 'board',
         });
       }
     },
 
-    /** 胜利全屏烟花：3 轮，每轮 2 个随机位置烟花 */
+    /** 胜利全屏烟花：3 轮，每轮 2 个随机位置烟花（设计坐标系，不随镜头移动） */
     spawnWinFireworks: function () {
       var self = this;
       for (var round = 0; round < 3; round++) {
@@ -373,7 +475,11 @@
             for (var k = 0; k < 2; k++) {
               var x = 60 + Math.random() * (GameGlobal.DESIGN_W - 120);
               var y = 120 + Math.random() * 480;
+              var before = self.particles.length;
               self.spawnFirework(x, y);
+              for (var i = before; i < self.particles.length; i++) {
+                self.particles[i].space = 'design';
+              }
             }
           }, delay);
         })(round * 400);
@@ -711,6 +817,19 @@
         GameGlobal.DESIGN_W / 2, 48 + safeTop, 20, '#7A4A1F', 'center', true);
       this.drawText('⏱ ' + game.getElapsed() + 's', GameGlobal.DESIGN_W - 62, 48 + safeTop, 17, '#7A4A1F', 'right', false);
 
+      // 特殊格能力指示（新玩法关）：折/穿/跨 三枚小徽章，解锁后点亮
+      if (withButtons && game.useNewEngine) this.drawAbilityChips(game);
+
+      // ── 棋盘区（地板 + 卡片 + 连线 + 棋盘粒子）统一在镜头变换内 ──
+      ctx.save();
+      if (game.cam) {
+        var sc = game._boardScreenCenter();
+        ctx.translate(sc.x, sc.y);
+        ctx.scale(game.cam.scale, game.cam.scale);
+        ctx.translate(-game.cam.cx, -game.cam.cy);
+      }
+      // 形状地板 + 特殊格底色（仅形状棋盘关）
+      if (game.hasShape) this.drawBoardFloor(game);
       // 卡片（先画，连线需要覆盖在卡片上方）
       for (var r = 1; r <= game.rows; r++) {
         for (var c = 1; c <= game.cols; c++) {
@@ -720,12 +839,15 @@
           }
         }
       }
-
+      // 特殊格角标（画在卡片上方，有卡时也看得见）
+      if (game.hasShape) this.drawSpecialBadges(game);
       // 连线（消除金线 / 提示蓝线，画在卡片上层）
       this.drawConnectionLine(game.connectionLine);
-
-      // 粒子
-      this.drawParticles();
+      // 棋盘粒子（随镜头）
+      this.drawParticles('board');
+      ctx.restore();
+      // 屏幕粒子（胜利烟花等，不随镜头）
+      this.drawParticles('design');
 
       // 底部工具区（结算页不注册这些按钮）——按钮加大 + 剩余次数角标（用完不置灰，点击会提示去商店购买）
       if (withButtons) {

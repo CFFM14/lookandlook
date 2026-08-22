@@ -20,10 +20,12 @@
   <button onclick="showPage('menu')">首页</button>
   <button onclick="showPage('levels')">关卡选择</button>
   <button onclick="showPage('game')">游戏页</button>
+  <button onclick="showLevel(25)">🦅 第25关 展翅雄鹰</button>
+  <button onclick="showLevel(26)">❤️ 第26关 心心相印</button>
   <button onclick="showPage('win')">🎉 结算面板（新版）</button>
 </div>
 <div class="wrap"><canvas id="game"></canvas></div>
-<div class="tip">直接复用游戏真实渲染代码；结算面板为全新程序绘制版本（金色渐变+成绩三卡+新纪录徽章+弹入动画）</div>
+<div class="tip">直接复用游戏真实渲染代码；新玩法关：形状棋盘+分区隔离+特殊格（折/穿/跨）+入场镜头；大地图关支持拖拽平移、滚轮缩放</div>
 
 <script>
 // ── mock 微信环境（浏览器预览用） ──────────────
@@ -74,6 +76,14 @@ function showPage(page) {
     Main.page = 'win';
   }
 }
+// 直达新玩法关（绕过解锁限制，便于预览）
+function showLevel(id) {
+  if (!GameGlobal.Main || !GameGlobal.Main._ready) return;
+  var Main = GameGlobal.Main;
+  Main.game = new GameGlobal.Game(id);
+  Main.page = 'game'; Main.winData = null; Main.helpPopupOpen = false;
+  Main.game.startIntro();
+}
 // 图片加载完成后默认展示结算面板
 (function wait() {
   if (GameGlobal.Main && GameGlobal.Main._ready) showPage('win');
@@ -105,6 +115,14 @@ function showPage(page) {
     if (down && touchHandlers.end) touchHandlers.end(mk(pos(e)));
     down = false;
   });
+  // 滚轮缩放（大地图关；真机上是双指捏合）
+  canvas.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var Main = GameGlobal.Main;
+    if (!Main || Main.page !== 'game' || !Main.game || !Main.game.cam) return;
+    var p = pos(e);
+    Main.game.zoomAt(p.clientX, p.clientY, e.deltaY < 0 ? 1.12 : 0.89);
+  }, { passive: false });
 })();
 </script>
 </body>

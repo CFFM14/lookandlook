@@ -44,6 +44,7 @@
       Main.game = new GameGlobal.Game(levelId);
       Main.page = 'game';
       Main.winData = null;
+      Main.game.startIntro(); // 新玩法关：先全景后聚焦的入场镜头（旧关 cam=null 自动无操作）
       // 玩法说明弹窗：每次进入先关掉；若该关首次进入（未看过说明）则自动弹出并标记已看
       Main.helpPopupOpen = false;
       if (!GameGlobal.Storage.isHelpSeen(levelId)) {

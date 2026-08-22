@@ -32,6 +32,19 @@
     this.startTime = 0;
     this.connectionLine = null; // {points, color:'gold'|'blue', timeLeft}
 
+    // ── 新玩法扩展（形状棋盘 / 分区 / 特殊格 / 镜头）──
+    this.hasShape = !!this.cfg.shapeMap;      // 是否形状棋盘（含镂空格）
+    this.shape = null;        // shape[r][c] = true/false 格子是否存在（1-based，同 grid）
+    this.zoneMap = null;      // zoneMap[r][c] = 分区 id
+    this.specialMap = null;   // specialMap[r][c] = 'fold'|'pierce'|'cross'|null
+    this.unlocked = { fold: false, pierce: false, cross: false }; // 特殊格能力（消掉其上水果解锁）
+    this.zoneCount = 1;
+    this.useNewEngine = this.hasShape; // 新玩法关走泛化寻路；旧关走原 canConnect（行为不变）
+    this.cam = null;          // 镜头 {cx, cy, scale}（棋盘坐标系）；null = 固定布局（旧关）
+    this.boardBox = null;     // 棋盘世界包围盒
+    this._introOn = false;    // 入场镜头播放中
+    this._introTarget = null;
+
     this.initLevel();
   }
 
@@ -65,9 +78,95 @@
       }
     }
 
+    // 新玩法：重置特殊格解锁状态 + 解析形状/分区/特殊格 + 初始化镜头
+    this.unlocked = { fold: false, pierce: false, cross: false };
+    this._introOn = false;
+    if (this.hasShape) this._buildShapeData();
+    this._initCamera();
+
     this.generateLayout();
     this.createCards();
     if (this.cfg.frozenRatio > 0) this.applyFrozen(this.cfg.frozenRatio);
+  };
+
+  // ══════════════════════════════════════════════
+  //  新玩法：形状 / 分区 / 特殊格
+  // ══════════════════════════════════════════════
+
+  /** 解析 shapeMap 字符画：'.'=镂空，A~H=分区 0~7；叠加 specials 特殊格 */
+  Game.prototype._buildShapeData = function () {
+    var rows = this.rows, cols = this.cols;
+    var map = this.cfg.shapeMap;
+    this.shape = [];
+    this.zoneMap = [];
+    this.specialMap = [];
+    var maxZone = 0;
+    for (var r = 0; r <= rows + 1; r++) {
+      this.shape[r] = [];
+      this.zoneMap[r] = [];
+      this.specialMap[r] = [];
+      for (var c = 0; c <= cols + 1; c++) {
+        var inBoard = (r >= 1 && r <= rows && c >= 1 && c <= cols);
+        var ch = inBoard ? (map[r - 1] && map[r - 1][c - 1]) : '.';
+        var exists = inBoard && ch && ch !== '.';
+        this.shape[r][c] = !!exists;
+        var zone = 0;
+        if (exists) {
+          var code = ch.charCodeAt(0);
+          zone = (code >= 65 && code <= 72) ? code - 65 : 0; // 'A'..'H' → 0..7
+          if (zone > maxZone) maxZone = zone;
+        }
+        this.zoneMap[r][c] = zone;
+        this.specialMap[r][c] = null;
+      }
+    }
+    // 特殊格（cfg.specials 的 r,c 为 0 起地图坐标）
+    var sp = this.cfg.specials || [];
+    for (var i = 0; i < sp.length; i++) {
+      var sr = sp[i].r + 1, sc = sp[i].c + 1;
+      if (sr >= 1 && sr <= rows && sc >= 1 && sc <= cols && this.shape[sr][sc]) {
+        this.specialMap[sr][sc] = sp[i].type;
+      }
+    }
+    this.zoneCount = maxZone + 1;
+  };
+
+  /** 分区是否隔离中（多分区 且 跨区未解锁） */
+  Game.prototype.zoneIsolated = function () {
+    return this.zoneCount > 1 && !this.unlocked.cross;
+  };
+
+  /** 配对记账 key：分区隔离时按「类型+分区」分组，否则仅按类型（与旧行为一致） */
+  Game.prototype._pairKey = function (card) {
+    return this.zoneIsolated() ? card.type + '|z' + card.zone : String(card.type);
+  };
+
+  /** 消除/移除 (r,c) 处卡片后调用：若该格是特殊格则解锁对应能力 */
+  Game.prototype._maybeUnlock = function (r, c) {
+    if (!this.specialMap) return;
+    var sp = this.specialMap[r] && this.specialMap[r][c];
+    if (sp && !this.unlocked[sp]) {
+      this.unlocked[sp] = true;
+      var def = GameGlobal.SPECIAL_DEFS[sp];
+      GameGlobal.SoundManager.play('coin');
+      GameGlobal.Main.showToast(def ? def.toast : '能力解锁！');
+    }
+  };
+
+  /**
+   * 连线判定入口：旧关走原 canConnect（行为 100% 不变）；
+   * 新玩法关走泛化引擎，按解锁状态支持 3 折 / 穿透。
+   */
+  Game.prototype.findConnectPath = function (cardA, cardB) {
+    if (!this.useNewEngine) {
+      return GameGlobal.PathChecker.canConnect(this.grid, this.rows, this.cols,
+        cardA.r, cardA.c, cardB.r, cardB.c);
+    }
+    return GameGlobal.PathChecker.findPath(this.grid, this.rows, this.cols,
+      cardA.r, cardA.c, cardB.r, cardB.c, {
+        maxTurns: this.unlocked.fold ? 3 : 2,
+        maxPierce: this.unlocked.pierce ? 1 : 0,
+      });
   };
 
   /** 会话安全定时器：restart/切关后旧回调自动失效 */
@@ -82,6 +181,12 @@
 
   /** 成对生成水果布局（Fisher-Yates 洗牌），复刻原版 */
   Game.prototype.generateLayout = function () {
+    // 形状棋盘：按分区各自成对生成（保证每个分区内部可独立消完）
+    if (this.hasShape) {
+      this._generateShapedLayout();
+      return;
+    }
+
     var totalCards = this.rows * this.cols;
     var pairsNeeded = totalCards / 2;
 
@@ -123,9 +228,51 @@
     this.remainingPairs = pairsNeeded;
   };
 
+  /**
+   * 形状棋盘布局：按分区收集格子 → 各分区用独立水果池成对填充。
+   * 分区格数为奇时多出的一格随机补一种（结算前的单例机制会自动收掉）。
+   */
+  Game.prototype._generateShapedLayout = function () {
+    var byZone = {};
+    for (var r = 1; r <= this.rows; r++) {
+      for (var c = 1; c <= this.cols; c++) {
+        if (!this.shape[r][c]) continue;
+        var z = this.zoneMap[r][c];
+        (byZone[z] = byZone[z] || []).push([r, c]);
+      }
+    }
+    var pools = this.cfg.zonePools || {};
+    var allTypes = [];
+    for (var t = 1; t <= (this.cfg.fruitTypeCount || 12); t++) allTypes.push(t);
+
+    for (var z2 in byZone) {
+      if (!byZone.hasOwnProperty(z2)) continue;
+      var cells = byZone[z2];
+      var pool = pools[z2] || allTypes;
+      var pairs = Math.floor(cells.length / 2);
+      var types = [];
+      for (var i = 0; i < pairs; i++) {
+        var ft = pool[Math.floor(Math.random() * pool.length)];
+        types.push(ft, ft);
+      }
+      // 奇数格：随机补一张（会成为孤卡，由单例机制自动消除，不会卡关）
+      if (cells.length % 2 !== 0) {
+        types.push(pool[Math.floor(Math.random() * pool.length)]);
+      }
+      this.shuffleArray(types);
+      for (var k = 0; k < cells.length; k++) {
+        this.grid[cells[k][0]][cells[k][1]] = types[k];
+      }
+    }
+    var total = 0;
+    for (var r2 = 1; r2 <= this.rows; r2++) {
+      for (var c2 = 1; c2 <= this.cols; c2++) if (this.grid[r2][c2] !== 0) total++;
+    }
+    this.remainingPairs = Math.floor(total / 2);
+  };
+
   /** 创建卡片对象（含视觉状态） */
   Game.prototype.createCards = function () {
-    var m = this.metrics;
     for (var r = 1; r <= this.rows; r++) {
       for (var c = 1; c <= this.cols; c++) {
         var ft = this.grid[r][c];
@@ -136,6 +283,7 @@
           state: 'normal',
           baseX: px.x, baseY: px.y,
           visual: { x: px.x, y: px.y, scale: 1, iceAlpha: 0 },
+          zone: this.zoneMap ? this.zoneMap[r][c] : 0,
         };
         this.cardNodes[r][c] = card;
       }
@@ -239,11 +387,18 @@
         this.showMismatch(first, card);
         return;
       }
+      // 分区隔离：不同分区的水果默认不能互消（跨区特殊格解锁后放行）
+      if (this.zoneIsolated() && first.zone !== card.zone) {
+        var zn = GameGlobal.ZONE_NAMES || [];
+        GameGlobal.Main.showToast('不同区域的水果不能互消（' +
+          (zn[first.zone] || '') + ' ≠ ' + (zn[card.zone] || '') + '）');
+        this.showMismatch(first, card);
+        return;
+      }
       // 冰块 = 两张卡（需消除两次）：普+冰 配对时普卡消、冰卡破冰保留；
       // 冰+冰 双双击碎。任何同类型组合都可配对，不做状态限制（见 eliminatePair）
 
-      var path = GameGlobal.PathChecker.canConnect(this.grid, this.rows, this.cols,
-        first.r, first.c, card.r, card.c);
+      var path = this.findConnectPath(first, card);
       if (path) {
         this.eliminatePair(first, card, path);
       } else {
@@ -318,6 +473,7 @@
       this.cardNodes[card1.r][card1.c] = null;
       this.frozen[card1.r][card1.c] = 0;
       this.singletonSet.delete(card1.r + ',' + card1.c);
+      this._maybeUnlock(card1.r, card1.c); // 特殊格：消掉其上水果即解锁
       var p1 = this.logicToPixel(card1.r, card1.c);
       card1.state = 'eliminating';
       GameGlobal.Renderer.spawnFirework(p1.x, p1.y);
@@ -337,6 +493,7 @@
         self.cardNodes[card2.r][card2.c] = null;
         self.frozen[card2.r][card2.c] = 0;
         self.singletonSet.delete(card2.r + ',' + card2.c);
+        self._maybeUnlock(card2.r, card2.c); // 特殊格：消掉其上水果即解锁
         var p2 = self.logicToPixel(card2.r, card2.c);
         card2.state = 'eliminating';
         GameGlobal.Renderer.spawnFirework(p2.x, p2.y);
@@ -391,18 +548,19 @@
    * 破冰保留会改变类型数量的奇偶结构，手动增减账目容易出错，统一按类型重算最可靠。
    */
   Game.prototype.recomputeRemainingPairs = function () {
-    var byType = {};
+    var byKey = {};
     for (var r = 1; r <= this.rows; r++) {
       for (var c = 1; c <= this.cols; c++) {
         var card = this.cardNodes[r][c];
         if (card && card.state !== 'eliminated') {
-          byType[card.type] = (byType[card.type] || 0) + 1;
+          var k = this._pairKey(card);
+          byKey[k] = (byKey[k] || 0) + 1;
         }
       }
     }
     var pairs = 0;
-    for (var t in byType) {
-      if (byType.hasOwnProperty(t)) pairs += Math.floor(byType[t] / 2);
+    for (var t in byKey) {
+      if (byKey.hasOwnProperty(t)) pairs += Math.floor(byKey[t] / 2);
     }
     this.remainingPairs = pairs;
   };
@@ -414,18 +572,18 @@
    */
   Game.prototype.recomputeSingletons = function () {
     this.singletonSet.clear();
-    var byType = {};
+    var byKey = {};
     for (var r = 1; r <= this.rows; r++) {
       for (var c = 1; c <= this.cols; c++) {
         var card = this.cardNodes[r][c];
         if (card && card.state !== 'eliminated') {
-          (byType[card.type] = byType[card.type] || []).push(card);
+          (byKey[this._pairKey(card)] = byKey[this._pairKey(card)] || []).push(card);
         }
       }
     }
-    for (var t in byType) {
-      if (!byType.hasOwnProperty(t)) continue;
-      var list = byType[t];
+    for (var t in byKey) {
+      if (!byKey.hasOwnProperty(t)) continue;
+      var list = byKey[t];
       if (list.length === 1) {
         this.clearSingletonImmediately(list[0]);
       }
@@ -439,6 +597,7 @@
     this.grid[card.r][card.c] = 0;
     this.cardNodes[card.r][card.c] = null;
     this.frozen[card.r][card.c] = 0;
+    this._maybeUnlock(card.r, card.c); // 特殊格：孤卡被收走也算清出该格
     card.state = 'eliminating';
     GameGlobal.SoundManager.play('elim');
     GameGlobal.Tween.to(card.visual, { scale: 0 }, 220, 'easeIn', function () {
@@ -729,6 +888,7 @@
       this.cardNodes[c2.r][c2.c] = null;
       this.frozen[c2.r][c2.c] = 0;
       this.singletonSet.delete(c2.r + ',' + c2.c);
+      this._maybeUnlock(c2.r, c2.c); // 特殊格：炸掉其上水果即解锁
       c2.state = 'eliminating';
       var target = c2.visual;
       GameGlobal.Tween.to(target, { scale: 1.3 }, 100, 'easeOut', function () {
@@ -811,21 +971,20 @@
       }
     }
 
-    var byType = {};
+    var byKey = {};
     for (var i = 0; i < cards.length; i++) {
       var cd = cards[i];
-      (byType[cd.type] = byType[cd.type] || []).push(cd);
+      (byKey[this._pairKey(cd)] = byKey[this._pairKey(cd)] || []).push(cd);
     }
 
-    for (var t in byType) {
-      if (!byType.hasOwnProperty(t)) continue;
-      var same = byType[t];
+    for (var t in byKey) {
+      if (!byKey.hasOwnProperty(t)) continue;
+      var same = byKey[t];
       if (same.length < 2) continue;
       for (var a = 0; a < same.length; a++) {
         for (var b = a + 1; b < same.length; b++) {
           var cardA = same[a], cardB = same[b];
-          var path = GameGlobal.PathChecker.canConnect(this.grid, this.rows, this.cols,
-            cardA.r, cardA.c, cardB.r, cardB.c);
+          var path = this.findConnectPath(cardA, cardB);
           if (path) {
             GameGlobal.SoundManager.play('hint');
             this.showHintLine(path, cardA, cardB);
@@ -855,7 +1014,7 @@
   //  胜利检查 & 死局 & 单例
   // ══════════════════════════════════════════════
 
-  /** 是否至少存在一对可连接的配对（冰块可配普卡/冰卡，按类型分组即可） */
+  /** 是否至少存在一对可连接的配对（冰块可配普卡/冰卡，分区隔离时按 类型+分区 分组） */
   Game.prototype.hasValidMove = function () {
     var cards = [];
     for (var r = 1; r <= this.rows; r++) {
@@ -864,19 +1023,18 @@
         if (card && card.state !== 'eliminated') cards.push(card);
       }
     }
-    var byType = {};
+    var byKey = {};
     for (var i = 0; i < cards.length; i++) {
       var cd = cards[i];
-      (byType[cd.type] = byType[cd.type] || []).push(cd);
+      (byKey[this._pairKey(cd)] = byKey[this._pairKey(cd)] || []).push(cd);
     }
-    for (var t in byType) {
-      if (!byType.hasOwnProperty(t)) continue;
-      var same = byType[t];
+    for (var t in byKey) {
+      if (!byKey.hasOwnProperty(t)) continue;
+      var same = byKey[t];
       if (same.length < 2) continue;
       for (var a = 0; a < same.length; a++) {
         for (var b = a + 1; b < same.length; b++) {
-          if (GameGlobal.PathChecker.canConnect(this.grid, this.rows, this.cols,
-            same[a].r, same[a].c, same[b].r, same[b].c)) {
+          if (this.findConnectPath(same[a], same[b])) {
             return true;
           }
         }
@@ -919,6 +1077,7 @@
           toClear.push(card);
           this.grid[r][c] = 0;
           this.cardNodes[r][c] = null;
+          this._maybeUnlock(r, c); // 特殊格：死局清场也会清出特殊格
         }
       }
     }
@@ -960,6 +1119,7 @@
         self.grid[card.r][card.c] = 0;
         self.cardNodes[card.r][card.c] = null;
         self.frozen[card.r][card.c] = 0;
+        self._maybeUnlock(card.r, card.c); // 特殊格：单例清场同样解锁
         self._after(delay, function () {
           card.state = 'eliminating';
           GameGlobal.Tween.to(card.visual, { scale: 0 }, 250, 'easeIn', function () {
@@ -1039,8 +1199,11 @@
    * 设计坐标 → 逻辑格子 {r, c} | null
    * 卡片重叠排列时（负间距），后绘制的卡在最上层（原版 Cocos 触摸同样按层级优先），
    * 因此从右下角（最后绘制）向左上遍历，命中首个包含点击点的卡。
+   * 带镜头的新玩法关：先把设计坐标逆变换回棋盘坐标再命中。
    */
   Game.prototype.hitTest = function (x, y) {
+    var bp = this.designToBoard(x, y);
+    x = bp.x; y = bp.y;
     var m = this.metrics;
     var hw = m.cw / 2, hh = m.ch / 2;
     for (var r = this.rows; r >= 1; r--) {
@@ -1054,6 +1217,105 @@
     return null;
   };
 
+  // ══════════════════════════════════════════════
+  //  镜头（camera）：新玩法关启用，旧关 cam=null 完全走旧逻辑
+  //  设计坐标点 P ↔ 棋盘坐标点 B：
+  //    绘制  B → P：P = (B - cam.c) * cam.scale + screenCenter
+  //    命中  P → B：B = (P - screenCenter) / cam.scale + cam.c
+  // ══════════════════════════════════════════════
+
+  /** 棋盘在屏幕上的展示中心（顶/底栏之间的区域中心，设计坐标） */
+  Game.prototype._boardScreenCenter = function () {
+    var topBar = GameGlobal.TOP_BAR_H + (GameGlobal.SAFE_TOP || 0);
+    var availH = GameGlobal.DESIGN_H - topBar - GameGlobal.BOTTOM_BAR_H;
+    return { x: GameGlobal.DESIGN_W / 2, y: topBar + availH / 2 };
+  };
+
+  /** 初始化镜头：旧关 cam=null；新玩法关计算包围盒并摆到「全景」位 */
+  Game.prototype._initCamera = function () {
+    if (!this.useNewEngine) { this.cam = null; this.boardBox = null; return; }
+    var m = this.metrics;
+    var bw = this.cols * (m.cw + m.gx) - m.gx;
+    var bh = this.rows * (m.ch + m.gy) - m.gy;
+    this.boardBox = { x: m.ox, y: m.oy, w: bw, h: bh };
+    this.cam = { cx: m.ox + bw / 2, cy: m.oy + bh / 2, scale: 1 };
+  };
+
+  /** 整盘恰好入屏的缩放（全景用） */
+  Game.prototype._fitScale = function () {
+    var b = this.boardBox;
+    var availW = GameGlobal.DESIGN_W - GameGlobal.GRID_MARGIN_X * 2;
+    var topBar = GameGlobal.TOP_BAR_H + (GameGlobal.SAFE_TOP || 0);
+    var availH = GameGlobal.DESIGN_H - topBar - GameGlobal.BOTTOM_BAR_H;
+    return Math.min(availW / (b.w + 30), availH / (b.h + 30));
+  };
+
+  /** 入场镜头：先全景展示整个图案 → 缓动推近到对局视角（可点击跳过） */
+  Game.prototype.startIntro = function () {
+    if (!this.cam) return;
+    var b = this.boardBox;
+    var fit = this._fitScale();
+    var from = { cx: b.x + b.w / 2, cy: b.y + b.h / 2, scale: fit * 0.92 };
+    // 大地图关：推近到接近自然尺寸，聚焦棋盘中心；普通形状关：轻推近到 1.0
+    var toScale = this.cfg.viewport ? Math.min(1, fit * 2.2) : 1;
+    var to = { cx: b.x + b.w / 2, cy: b.y + b.h / 2, scale: toScale };
+    this.cam.cx = from.cx; this.cam.cy = from.cy; this.cam.scale = from.scale;
+    this._introTarget = to;
+    this._introOn = true;
+    var self = this;
+    GameGlobal.Tween.to(this.cam, { cx: to.cx, cy: to.cy, scale: to.scale }, 1500, 'easeInOut', function () {
+      self._introOn = false;
+    });
+  };
+
+  /** 跳过入场镜头（立即到目标视角） */
+  Game.prototype.skipIntro = function () {
+    if (!this._introOn) return;
+    GameGlobal.Tween.kill(this.cam);
+    var t = this._introTarget;
+    this.cam.cx = t.cx; this.cam.cy = t.cy; this.cam.scale = t.scale;
+    this._introOn = false;
+  };
+
+  /** 平移镜头（ddx/ddy 为设计坐标位移，内容跟随手指） */
+  Game.prototype.panBy = function (ddx, ddy) {
+    if (!this.cam || this._introOn || !this.cfg.viewport) return;
+    this.cam.cx -= ddx / this.cam.scale;
+    this.cam.cy -= ddy / this.cam.scale;
+    this._clampCam();
+  };
+
+  /** 以设计坐标点 (dx,dy) 为支点缩放（该点下的棋盘内容保持不动） */
+  Game.prototype.zoomAt = function (dx, dy, factor) {
+    if (!this.cam || this._introOn || !this.cfg.viewport) return;
+    var sc = this._boardScreenCenter();
+    var ns = Math.max(this._fitScale() * 0.9, Math.min(2.2, this.cam.scale * factor));
+    var wx = (dx - sc.x) / this.cam.scale + this.cam.cx;
+    var wy = (dy - sc.y) / this.cam.scale + this.cam.cy;
+    this.cam.scale = ns;
+    this.cam.cx = wx - (dx - sc.x) / ns;
+    this.cam.cy = wy - (dy - sc.y) / ns;
+    this._clampCam();
+  };
+
+  /** 镜头钳制：别把棋盘拖/缩丢（留 30% 余量） */
+  Game.prototype._clampCam = function () {
+    var b = this.boardBox;
+    var padX = b.w * 0.3, padY = b.h * 0.3;
+    this.cam.cx = Math.max(b.x - padX, Math.min(b.x + b.w + padX, this.cam.cx));
+    this.cam.cy = Math.max(b.y - padY, Math.min(b.y + b.h + padY, this.cam.cy));
+  };
+
+  /** 设计坐标 → 棋盘坐标（旧关 cam=null 时恒等，行为不变） */
+  Game.prototype.designToBoard = function (x, y) {
+    if (!this.cam) return { x: x, y: y };
+    var sc = this._boardScreenCenter();
+    return {
+      x: (x - sc.x) / this.cam.scale + this.cam.cx,
+      y: (y - sc.y) / this.cam.scale + this.cam.cy,
+    };
+  };
+
   /** 剩余对数的可用提示（UI 用） */
   Game.prototype.getRemainingPairs = function () {
     return this.remainingPairs;
@@ -1062,6 +1324,7 @@
   Game.prototype.restart = function () {
     this._won = false;
     this.initLevel();
+    this.startIntro(); // 重开也重播入场镜头（新玩法关；旧关 cam=null 自动无操作）
   };
 
   GameGlobal.Game = Game;

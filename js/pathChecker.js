@@ -144,6 +144,100 @@
     return PathChecker._isEmpty(grid, rows, cols, r, c);
   };
 
+  // ══════════════════════════════════════════════════════════
+  //  泛化寻路引擎（新玩法关卡专用：多折 / 穿透）
+  //  旧关卡仍走上方 canConnect（行为 100% 不变）。
+  // ══════════════════════════════════════════════════════════
+
+  /** 极简二叉堆（按 cost 小顶堆） */
+  function _Heap() { this.a = []; }
+  _Heap.prototype.push = function (n) {
+    var a = this.a; a.push(n); var i = a.length - 1;
+    while (i > 0) {
+      var p = (i - 1) >> 1;
+      if (a[p].cost <= a[i].cost) break;
+      var t = a[p]; a[p] = a[i]; a[i] = t; i = p;
+    }
+  };
+  _Heap.prototype.pop = function () {
+    var a = this.a; var top = a[0]; var last = a.pop();
+    if (a.length) {
+      a[0] = last; var i = 0;
+      for (;;) {
+        var l = i * 2 + 1, rr = l + 1, m = i;
+        if (l < a.length && a[l].cost < a[m].cost) m = l;
+        if (rr < a.length && a[rr].cost < a[m].cost) m = rr;
+        if (m === i) break;
+        var t = a[m]; a[m] = a[i]; a[i] = t; i = m;
+      }
+    }
+    return top;
+  };
+
+  /** 把逐格路径压缩成拐点数组（含起点终点），供连线绘制 */
+  PathChecker._compressPath = function (path) {
+    if (path.length <= 2) return path;
+    var out = [path[0]];
+    for (var i = 1; i < path.length - 1; i++) {
+      var dr0 = path[i].r - path[i - 1].r, dc0 = path[i].c - path[i - 1].c;
+      var dr1 = path[i + 1].r - path[i].r, dc1 = path[i + 1].c - path[i].c;
+      if (dr0 !== dr1 || dc0 !== dc1) out.push(path[i]);
+    }
+    out.push(path[path.length - 1]);
+    return out;
+  };
+
+  /**
+   * 泛化连线判定（Dijkstra：转弯最少优先 → 穿透最少 → 步数最短）
+   * @param grid number[][] 逻辑网格（0=空，外围 0/rows+1/cols+1 恒空）
+   * @param opts { maxTurns=2, maxPierce=0 }
+   *   maxTurns  —— 最大转弯数（默认 2；解锁「多折」后传 3）
+   *   maxPierce —— 允许穿过的阻挡数（默认 0；解锁「穿透」后传 1）
+   * @returns 拐点数组（含起终点）| null
+   */
+  PathChecker.findPath = function (grid, rows, cols, r1, c1, r2, c2, opts) {
+    opts = opts || {};
+    var maxTurns = (opts.maxTurns === undefined) ? 2 : opts.maxTurns;
+    var maxPierce = opts.maxPierce || 0;
+    if (r1 === r2 && c1 === c2) return null;
+    if (grid[r1][c1] === 0 || grid[r1][c1] !== grid[r2][c2]) return null;
+
+    var dirs = [[-1, 0], [0, 1], [1, 0], [0, -1]];
+    var W = cols + 2;
+    var heap = new _Heap();
+    var best = {}; // (r*W+c)*4+dir → cost（已更优则跳过）
+    // cost = 转弯*1e6 + 穿透*1e4 + 步数（字典序优先级）
+    function costOf(turns, pierce, steps) { return turns * 1000000 + pierce * 10000 + steps; }
+
+    heap.push({ cost: 0, r: r1, c: c1, dir: -1, turns: 0, pierce: 0, path: [{ r: r1, c: c1 }] });
+
+    var guard = (rows + 2) * (cols + 2) * 4 * (maxTurns + 1) * (maxPierce + 1) + 64;
+    while (heap.a.length && guard-- > 0) {
+      var cur = heap.pop();
+      if (cur.r === r2 && cur.c === c2) return PathChecker._compressPath(cur.path);
+
+      for (var d = 0; d < 4; d++) {
+        var nr = cur.r + dirs[d][0], nc = cur.c + dirs[d][1];
+        if (nr < 0 || nc < 0 || nr > rows + 1 || nc > cols + 1) continue;
+        if (nr === r1 && nc === c1) continue; // 不允许回头穿过起点卡
+        var nt = cur.turns + ((cur.dir !== -1 && cur.dir !== d) ? 1 : 0);
+        if (nt > maxTurns) continue;
+        var np = cur.pierce;
+        var isTarget = (nr === r2 && nc === c2);
+        if (!isTarget && grid[nr][nc] !== 0) {
+          if (np < maxPierce) np++; else continue;
+        }
+        var ncost = costOf(nt, np, cur.path.length);
+        var key = (nr * W + nc) * 4 + d;
+        if (best[key] !== undefined && best[key] <= ncost) continue;
+        best[key] = ncost;
+        heap.push({ cost: ncost, r: nr, c: nc, dir: d, turns: nt, pierce: np,
+          path: cur.path.concat([{ r: nr, c: nc }]) });
+      }
+    }
+    return null;
+  };
+
   GameGlobal.PathChecker = PathChecker;
 
   // ─── 自测（Node 环境下可跑）──────────────────

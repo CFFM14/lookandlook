@@ -25,6 +25,17 @@ GameGlobal.FRUIT_NAMES = [
   '草莓', '菠萝', '西瓜', '青苹果', '青葡萄', '香蕉'
 ];
 
+/** 分区配色（卡片边框色，蔬菜素材到位前先用颜色区分区域） */
+GameGlobal.ZONE_COLORS = ['#E8553F', '#3F8FE8', '#F2A93B', '#9775FA', '#3FB96B', '#E85FA0'];
+/** 分区名称（玩法说明 / 提示用） */
+GameGlobal.ZONE_NAMES = ['红区', '蓝区', '橙区', '紫区', '绿区', '粉区'];
+/** 玩法特殊格：颜色 / 角标字 / 解锁提示 */
+GameGlobal.SPECIAL_DEFS = {
+  fold:   { color: '#F2994A', glyph: '折', toast: '⚡ 多折解锁：本关连线最多可拐 3 次！' },
+  pierce: { color: '#3FB96B', glyph: '穿', toast: '⚡ 穿透解锁：连线可穿过 1 个水果！' },
+  cross:  { color: '#4A8FF2', glyph: '跨', toast: '⚡ 跨区解锁：不同区域的水果也能消除了！' },
+};
+
 /**
  * 关卡配置：前 16 关为手调配好的经典关（1普通 → 2下坠 → 3上浮 → 4左移 → 5右移 → 6冰冻…），
  * 第 17~20 关为 4 个斜向（对角线）重力演示关「对角坠果」（消除后水果分别滑向 右下/左下/右上/左上 角）。
@@ -256,6 +267,76 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
 
+  // ── 新玩法关：形状棋盘 / 分区 / 玩法特殊格 / 镜头 ──────────────
+  // shapeMap 字符画：'.'=镂空(无格子)  A~H=分区 0~7 的普通格
+  // specials：玩法特殊格（r,c 为 0 起地图坐标，所在分区取地图字符）——
+  //   fold=多折(连线可 3 折)  pierce=穿透(可穿 1 个水果)  cross=跨区(不同分区可互消)
+  // zonePools：每个分区独立的水果池（重叠的部分 = 跨区解锁后的可消对象）
+  levels.push({
+    // 第25关【展翅雄鹰】：鹰形棋盘（10×20 大地图，支持拖拽平移/缩放），
+    // 左翅=红区 / 右翅=蓝区 / 躯干=橙区，默认只能同区消除；
+    // 躯干藏「跨/折/穿」三枚特殊格，消掉上面的水果即解锁对应能力。
+    id: 25,
+    name: '展翅雄鹰',
+    desc: '分区棋盘：消同区水果，解锁特殊格能力',
+    difficulty: 5,
+    rows: 10, cols: 20, fruitTypeCount: 12,
+    gravity: null, frozenRatio: 0,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+    viewport: true, cardSize: 46,
+    shapeMap: [
+      '........CCCC........',
+      '..AAA...CCCC...BBB..',
+      '.AAAAA.CCCCCC.BBBBB.',
+      'AAAAAAACCCCCCCBBBBBB',
+      'AAAAAAACCCCCCCBBBBBB',
+      '.AAAAA.CCCCCC.BBBB..',
+      '..AAAA.CCCCCC.BBB...',
+      '...AAA..CCCC..BBB...',
+      '........CCCC........',
+      '........C..C........',
+    ],
+    zonePools: {
+      0: [1, 2, 3, 4, 5, 6, 7, 8],           // 左翅（红区）
+      1: [5, 6, 7, 8, 9, 10, 11, 12],        // 右翅（蓝区），与红区重叠 5~8 = 跨区目标
+      2: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], // 躯干（橙区）
+    },
+    specials: [
+      { r: 3, c: 9, type: 'cross' },   // 躯干上部：跨区
+      { r: 5, c: 9, type: 'fold' },    // 躯干中部：多折
+      { r: 6, c: 10, type: 'pierce' }, // 躯干下部：穿透
+    ],
+  });
+  levels.push({
+    // 第26关【心心相印】：心形镂空棋盘（10×11，单分区），
+    // 藏「折/穿」两枚特殊格，体验形状棋盘 + 多折 + 穿透。
+    id: 26,
+    name: '心心相印',
+    desc: '心形棋盘：找到特殊格，解锁多折与穿透',
+    difficulty: 4,
+    rows: 10, cols: 11, fruitTypeCount: 12,
+    gravity: null, frozenRatio: 0,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+    viewport: false,
+    shapeMap: [
+      '.AA.AAA.AA.',
+      'AAAAAAAAAAA',
+      'AAAAAAAAAAA',
+      'AAAAAAAAAAA',
+      '.AAAAAAAAA.',
+      '..AAAAAAA..',
+      '...AAAAA...',
+      '....AAA....',
+      '.....A.....',
+      '.....A.....',
+    ],
+    zonePools: { 0: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+    specials: [
+      { r: 2, c: 4, type: 'fold' },
+      { r: 3, c: 8, type: 'pierce' },
+    ],
+  });
+
   return levels;
 })();
 
@@ -303,6 +384,20 @@ GameGlobal.getLevelHelp = function (cfg) {
     lines.push('注意冰冻：被冰封的水果要先点一次破冰，再点一次才能消除。');
   }
 
+  // 新玩法说明：形状棋盘 / 分区 / 特殊格 / 镜头
+  if (cfg.shapeMap) {
+    lines.push('特殊棋盘：棋盘不是矩形，空白处没有卡片，开局镜头会先展示整个图案。');
+  }
+  if (cfg.zonePools && Object.keys(cfg.zonePools).length > 1) {
+    lines.push('分区规则：卡片边框颜色代表所属区域，默认只能消除同一区域内的水果对。');
+  }
+  if (cfg.specials && cfg.specials.length) {
+    lines.push('特殊格：消除「折/穿/跨」格子上的水果即可解锁能力——折=连线可拐 3 次，穿=连线可穿过 1 个水果，跨=不同区域也能互消。');
+  }
+  if (cfg.viewport) {
+    lines.push('大地图：单指拖动平移棋盘，双指捏合缩放。');
+  }
+
   lines.push('本关共 ' + (cfg.fruitTypeCount || 12) + ' 种水果，加油！');
   return lines;
 };
@@ -317,10 +412,16 @@ GameGlobal.getGridMetrics = function (cfg) {
   var topBar = GameGlobal.TOP_BAR_H + (GameGlobal.SAFE_TOP || 0);
   var availH = GameGlobal.DESIGN_H - topBar - GameGlobal.BOTTOM_BAR_H;
   var ratio = GameGlobal.GRID_OVERLAP_RATIO; // 重叠比例（负间距）
-  // cardSize * (cols - (cols-1)*ratio) ≤ availW → 网格恰好占满可用宽度
-  var cardSize = Math.floor(availW / (cfg.cols - (cfg.cols - 1) * ratio));
-  var cardSizeH = Math.floor(availH / (cfg.rows - (cfg.rows - 1) * ratio));
-  cardSize = Math.max(32, Math.min(cardSize, cardSizeH));
+  var cardSize;
+  if (cfg.viewport) {
+    // 大地图关卡：卡片用固定自然尺寸，超出屏幕的部分交给镜头平移/缩放
+    cardSize = cfg.cardSize || 46;
+  } else {
+    // cardSize * (cols - (cols-1)*ratio) ≤ availW → 网格恰好占满可用宽度
+    cardSize = Math.floor(availW / (cfg.cols - (cfg.cols - 1) * ratio));
+    var cardSizeH = Math.floor(availH / (cfg.rows - (cfg.rows - 1) * ratio));
+    cardSize = Math.max(32, Math.min(cardSize, cardSizeH));
+  }
 
   var gx = -Math.round(cardSize * ratio);
   var gy = -Math.round(cardSize * ratio);

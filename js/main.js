@@ -27,6 +27,13 @@
       tweens.push({ obj: obj, start: start, props: props, dur: dur, easeName: easeName, cb: cb, t: 0 });
     },
 
+    /** 取消某对象上的所有补间（如：跳过入场镜头时停掉镜头动画） */
+    kill: function (obj) {
+      for (var i = tweens.length - 1; i >= 0; i--) {
+        if (tweens[i].obj === obj) tweens.splice(i, 1);
+      }
+    },
+
     update: function (dt) {
       var i = 0;
       while (i < tweens.length) {
@@ -199,12 +206,51 @@
         if (!t) return;
         self._touchStart = { x: t.clientX, y: t.clientY };
         self._touchMoved = false;
+        self._boardPanned = false;
+        // 双指（捏合缩放）起点记录
+        if (e.touches && e.touches.length >= 2) {
+          var t2 = e.touches[1];
+          self._pinch = {
+            dist: Math.hypot(t2.clientX - t.clientX, t2.clientY - t.clientY),
+          };
+        } else {
+          self._pinch = null;
+        }
         var hit = self.hitButton(t.clientX, t.clientY);
         self.pressedId = hit ? hit : null;
       });
       wx.onTouchMove && wx.onTouchMove(function (e) {
         var t = e.touches && e.touches[0];
         if (!t || !self._touchStart) return;
+        var game = self.page === 'game' ? self.game : null;
+
+        // ── 游戏页（大地图关）：双指捏合缩放 ──
+        if (game && game.cam && game.cfg.viewport && e.touches && e.touches.length >= 2) {
+          var t2 = e.touches[1];
+          var dist = Math.hypot(t2.clientX - t.clientX, t2.clientY - t.clientY);
+          if (self._pinch && self._pinch.dist > 0) {
+            var mid = self.toDesign((t.clientX + t2.clientX) / 2, (t.clientY + t2.clientY) / 2);
+            game.zoomAt(mid.x, mid.y, dist / self._pinch.dist);
+            self._pinch.dist = dist;
+            self._boardPanned = true; // 捏合后不算点击
+            self.pressedId = null;
+          }
+          return;
+        }
+
+        // ── 游戏页（大地图关）：单指拖拽平移棋盘 ──
+        if (game && game.cam && game.cfg.viewport) {
+          var gdx = (t.clientX - self._touchStart.x) / self.scale;
+          var gdy = (t.clientY - self._touchStart.y) / self.scale;
+          if (gdx * gdx + gdy * gdy > 64) { // 超过 8 设计像素视为拖拽
+            self._boardPanned = true;
+            self.pressedId = null;
+            game.panBy(gdx - (self._lastPanDx || 0), gdy - (self._lastPanDy || 0));
+            self._lastPanDx = gdx; self._lastPanDy = gdy;
+          }
+          return;
+        }
+
         if (self.page === 'levels') {
           var dx = (t.clientX - self._touchStart.x) / self.scale;
           var dy = (t.clientY - self._touchStart.y) / self.scale;
@@ -235,6 +281,11 @@
         var dy = (t.clientY - self._touchStart.y) / self.scale;
         self._touchStart = null;
         self.pressedId = null;
+        self._pinch = null;
+        self._lastPanDx = 0; self._lastPanDy = 0;
+
+        // 棋盘拖拽/捏合过 → 本次不算点击
+        if (self._boardPanned) { self._boardPanned = false; return; }
 
         // 选关界面：水平拖拽结束 → 判定翻页
         if (self.page === 'levels' && self._levelDragging) {
@@ -291,6 +342,11 @@
       var btn = this.hitButton(cx, cy);
       if (btn) {
         GameGlobal.UI.onAction(btn);
+        return;
+      }
+      // 入场镜头播放中：点棋盘任意处跳过镜头（本次不选卡）
+      if (this.page === 'game' && this.game && this.game._introOn) {
+        this.game.skipIntro();
         return;
       }
       // 卡片

@@ -74,9 +74,9 @@ async function main() {
   check(typeof GameGlobal.PathChecker === 'object', 'PathChecker 已挂载');
   check(typeof GameGlobal.Game === 'function', 'Game 类已挂载');
   check(typeof GameGlobal.Main === 'object', 'Main 已挂载');
-  check(GameGlobal.LEVELS.length === 17, '17 个关卡配置');
+  check(GameGlobal.LEVELS.length === 26, '26 个关卡配置');
   check(GameGlobal.getLevelConfig(17) && GameGlobal.getLevelConfig(17).id === 17, '可获取第 17 关配置');
-  check(GameGlobal.LEVEL_LAYOUTS && Object.keys(GameGlobal.LEVEL_LAYOUTS).length === 17, '固定关卡数据 17 关');
+  check(GameGlobal.LEVEL_LAYOUTS && Object.keys(GameGlobal.LEVEL_LAYOUTS).length === 24, '固定关卡数据 24 关（25/26 为形状棋盘运行时生成）');
 
   // 固定性：同一关两次开局，棋盘与冰冻位置必须完全一致
   {
@@ -162,7 +162,7 @@ async function main() {
   check(clicked === 1, '模拟点击了一对可消除卡片');
   check(game.isProcessing === true, '消除流程进行中');
   await new Promise(r => setTimeout(r, 600));
-  check(game.remainingPairs === 11, '消除后剩余 11 对（第1关 12 对）');
+  check(game.remainingPairs === 39, '消除后剩余 39 对（第1关 10×8 共 40 对）');
 
   // 工具按钮
   GameGlobal.UI.onAction('btn_hint');
@@ -170,18 +170,23 @@ async function main() {
   GameGlobal.UI.onAction('btn_bomb');
   await new Promise(r => setTimeout(r, 700));
   check(game.isProcessing === false, '炸弹流程结束解锁');
-  check(game.remainingPairs <= 11, '炸弹后对数减少或不变');
+  check(game.remainingPairs <= 39, '炸弹后对数减少或不变（≤39）');
 
   // 渲染 win 前的动画帧
   for (let i = 0; i < 3; i++) { GameGlobal.Main.update(16); GameGlobal.Main.render(); }
 
-  // 关卡选择页（游戏内返回 → 选关界面，而非主菜单）
+  // 游戏内返回分流（gameFrom）：主界面「开始游戏」进的局 → 回主界面；选关界面进的局 → 回选关界面
   GameGlobal.UI.onAction('game_back');
-  check(GameGlobal.Main.page === 'levels', '游戏返回进入选关界面');
+  check(GameGlobal.Main.page === 'menu', '主界面进的局，返回回主界面');
   GameGlobal.UI.onAction('menu_levels');
   check(GameGlobal.Main.page === 'levels', '进入关卡选择');
   GameGlobal.Main.render();
   check(GameGlobal.Main.buttonBounds.some(b => b.id === 'lv_1'), '关卡按钮已注册');
+  GameGlobal.UI.onAction('lv_1');
+  check(GameGlobal.Main.page === 'game' && GameGlobal.Main.game && GameGlobal.Main.game.levelId === 1,
+    '从选关进入第 1 关');
+  GameGlobal.UI.onAction('game_back');
+  check(GameGlobal.Main.page === 'levels', '选关进的局，返回回选关界面');
 
   console.log('[C] 回归：背景覆盖非标准屏 + 结算面板按钮');
   {
