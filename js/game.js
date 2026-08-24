@@ -36,8 +36,6 @@
     this.hasShape = !!this.cfg.shapeMap;      // 是否形状棋盘（含镂空格）
     this.shape = null;        // shape[r][c] = true/false 格子是否存在（1-based，同 grid）
     this.zoneMap = null;      // zoneMap[r][c] = 分区 id
-    this.specialMap = null;   // specialMap[r][c] = 'fold'|'pierce'|'cross'|null
-    this.unlocked = { fold: false, pierce: false, cross: false }; // 特殊格能力（消掉其上水果解锁）
     this.zoneCount = 1;
     this.useNewEngine = this.hasShape; // 新玩法关走泛化寻路；旧关走原 canConnect（行为不变）
     this.cam = null;          // 镜头 {cx, cy, scale}（棋盘坐标系）；null = 固定布局（旧关）
@@ -78,8 +76,7 @@
       }
     }
 
-    // 新玩法：重置特殊格解锁状态 + 解析形状/分区/特殊格 + 初始化镜头
-    this.unlocked = { fold: false, pierce: false, cross: false };
+    // 新玩法：解析形状/分区 + 初始化镜头
     this._introOn = false;
     if (this.hasShape) this._buildShapeData();
     this._initCamera();
@@ -93,18 +90,16 @@
   //  新玩法：形状 / 分区 / 特殊格
   // ══════════════════════════════════════════════
 
-  /** 解析 shapeMap 字符画：'.'=镂空，A~H=分区 0~7；叠加 specials 特殊格 */
+  /** 解析 shapeMap 字符画：'.'=镂空，A~H=分区 0~7 */
   Game.prototype._buildShapeData = function () {
     var rows = this.rows, cols = this.cols;
     var map = this.cfg.shapeMap;
     this.shape = [];
     this.zoneMap = [];
-    this.specialMap = [];
     var maxZone = 0;
     for (var r = 0; r <= rows + 1; r++) {
       this.shape[r] = [];
       this.zoneMap[r] = [];
-      this.specialMap[r] = [];
       for (var c = 0; c <= cols + 1; c++) {
         var inBoard = (r >= 1 && r <= rows && c >= 1 && c <= cols);
         var ch = inBoard ? (map[r - 1] && map[r - 1][c - 1]) : '.';
@@ -117,23 +112,14 @@
           if (zone > maxZone) maxZone = zone;
         }
         this.zoneMap[r][c] = zone;
-        this.specialMap[r][c] = null;
-      }
-    }
-    // 特殊格（cfg.specials 的 r,c 为 0 起地图坐标）
-    var sp = this.cfg.specials || [];
-    for (var i = 0; i < sp.length; i++) {
-      var sr = sp[i].r + 1, sc = sp[i].c + 1;
-      if (sr >= 1 && sr <= rows && sc >= 1 && sc <= cols && this.shape[sr][sc]) {
-        this.specialMap[sr][sc] = sp[i].type;
       }
     }
     this.zoneCount = maxZone + 1;
   };
 
-  /** 分区是否隔离中（多分区 且 跨区未解锁） */
+  /** 分区是否隔离中（多分区时默认隔离，不同分区的水果不能互消） */
   Game.prototype.zoneIsolated = function () {
-    return this.zoneCount > 1 && !this.unlocked.cross;
+    return this.zoneCount > 1;
   };
 
   /** 配对记账 key：分区隔离时按「类型+分区」分组，否则仅按类型（与旧行为一致） */
@@ -141,21 +127,9 @@
     return this.zoneIsolated() ? card.type + '|z' + card.zone : String(card.type);
   };
 
-  /** 消除/移除 (r,c) 处卡片后调用：若该格是特殊格则解锁对应能力 */
-  Game.prototype._maybeUnlock = function (r, c) {
-    if (!this.specialMap) return;
-    var sp = this.specialMap[r] && this.specialMap[r][c];
-    if (sp && !this.unlocked[sp]) {
-      this.unlocked[sp] = true;
-      var def = GameGlobal.SPECIAL_DEFS[sp];
-      GameGlobal.SoundManager.play('coin');
-      GameGlobal.Main.showToast(def ? def.toast : '能力解锁！');
-    }
-  };
-
   /**
    * 连线判定入口：旧关走原 canConnect（行为 100% 不变）；
-   * 新玩法关走泛化引擎，按解锁状态支持 3 折 / 穿透。
+   * 新玩法关走泛化引擎（支持形状棋盘/分区的寻路，经典 2 折、不可穿透）。
    */
   Game.prototype.findConnectPath = function (cardA, cardB) {
     if (!this.useNewEngine) {
@@ -164,8 +138,8 @@
     }
     return GameGlobal.PathChecker.findPath(this.grid, this.rows, this.cols,
       cardA.r, cardA.c, cardB.r, cardB.c, {
-        maxTurns: this.unlocked.fold ? 3 : 2,
-        maxPierce: this.unlocked.pierce ? 1 : 0,
+        maxTurns: 2,
+        maxPierce: 0,
       });
   };
 
@@ -473,7 +447,6 @@
       this.cardNodes[card1.r][card1.c] = null;
       this.frozen[card1.r][card1.c] = 0;
       this.singletonSet.delete(card1.r + ',' + card1.c);
-      this._maybeUnlock(card1.r, card1.c); // 特殊格：消掉其上水果即解锁
       var p1 = this.logicToPixel(card1.r, card1.c);
       card1.state = 'eliminating';
       GameGlobal.Renderer.spawnFirework(p1.x, p1.y);
@@ -493,7 +466,6 @@
         self.cardNodes[card2.r][card2.c] = null;
         self.frozen[card2.r][card2.c] = 0;
         self.singletonSet.delete(card2.r + ',' + card2.c);
-        self._maybeUnlock(card2.r, card2.c); // 特殊格：消掉其上水果即解锁
         var p2 = self.logicToPixel(card2.r, card2.c);
         card2.state = 'eliminating';
         GameGlobal.Renderer.spawnFirework(p2.x, p2.y);
@@ -597,7 +569,6 @@
     this.grid[card.r][card.c] = 0;
     this.cardNodes[card.r][card.c] = null;
     this.frozen[card.r][card.c] = 0;
-    this._maybeUnlock(card.r, card.c); // 特殊格：孤卡被收走也算清出该格
     card.state = 'eliminating';
     GameGlobal.SoundManager.play('elim');
     GameGlobal.Tween.to(card.visual, { scale: 0 }, 220, 'easeIn', function () {
@@ -888,7 +859,6 @@
       this.cardNodes[c2.r][c2.c] = null;
       this.frozen[c2.r][c2.c] = 0;
       this.singletonSet.delete(c2.r + ',' + c2.c);
-      this._maybeUnlock(c2.r, c2.c); // 特殊格：炸掉其上水果即解锁
       c2.state = 'eliminating';
       var target = c2.visual;
       GameGlobal.Tween.to(target, { scale: 1.3 }, 100, 'easeOut', function () {
@@ -1077,7 +1047,6 @@
           toClear.push(card);
           this.grid[r][c] = 0;
           this.cardNodes[r][c] = null;
-          this._maybeUnlock(r, c); // 特殊格：死局清场也会清出特殊格
         }
       }
     }
@@ -1119,7 +1088,6 @@
         self.grid[card.r][card.c] = 0;
         self.cardNodes[card.r][card.c] = null;
         self.frozen[card.r][card.c] = 0;
-        self._maybeUnlock(card.r, card.c); // 特殊格：单例清场同样解锁
         self._after(delay, function () {
           card.state = 'eliminating';
           GameGlobal.Tween.to(card.visual, { scale: 0 }, 250, 'easeIn', function () {

@@ -29,12 +29,6 @@ GameGlobal.FRUIT_NAMES = [
 GameGlobal.ZONE_COLORS = ['#E8553F', '#3F8FE8', '#F2A93B', '#9775FA', '#3FB96B', '#E85FA0'];
 /** 分区名称（玩法说明 / 提示用） */
 GameGlobal.ZONE_NAMES = ['红区', '蓝区', '橙区', '紫区', '绿区', '粉区'];
-/** 玩法特殊格：颜色 / 角标字 / 解锁提示 */
-GameGlobal.SPECIAL_DEFS = {
-  fold:   { color: '#F2994A', glyph: '折', toast: '⚡ 多折解锁：本关连线最多可拐 3 次！' },
-  pierce: { color: '#3FB96B', glyph: '穿', toast: '⚡ 穿透解锁：连线可穿过 1 个水果！' },
-  cross:  { color: '#4A8FF2', glyph: '跨', toast: '⚡ 跨区解锁：不同区域的水果也能消除了！' },
-};
 
 /**
  * 关卡配置：前 16 关为手调配好的经典关（1普通 → 2下坠 → 3上浮 → 4左移 → 5右移 → 6冰冻…），
@@ -267,18 +261,15 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
 
-  // ── 新玩法关：形状棋盘 / 分区 / 玩法特殊格 / 镜头 ──────────────
+  // ── 新玩法关：形状棋盘 / 分区 / 镜头 ──────────────
   // shapeMap 字符画：'.'=镂空(无格子)  A~H=分区 0~7 的普通格
-  // specials：玩法特殊格（r,c 为 0 起地图坐标，所在分区取地图字符）——
-  //   fold=多折(连线可 3 折)  pierce=穿透(可穿 1 个水果)  cross=跨区(不同分区可互消)
-  // zonePools：每个分区独立的水果池（重叠的部分 = 跨区解锁后的可消对象）
+  // zonePools：每个分区独立的水果池（不同分区的水果默认不能互消）
   levels.push({
     // 第25关【展翅雄鹰】：鹰形棋盘（10×20 大地图，支持拖拽平移/缩放），
-    // 左翅=红区 / 右翅=蓝区 / 躯干=橙区，默认只能同区消除；
-    // 躯干藏「跨/折/穿」三枚特殊格，消掉上面的水果即解锁对应能力。
+    // 左翅=红区 / 右翅=蓝区 / 躯干=橙区，默认只能同区消除。
     id: 25,
     name: '展翅雄鹰',
-    desc: '分区棋盘：消同区水果，解锁特殊格能力',
+    desc: '分区棋盘：左右翅分区，同区才能消除',
     difficulty: 5,
     rows: 10, cols: 20, fruitTypeCount: 12,
     gravity: null, frozenRatio: 0,
@@ -298,21 +289,16 @@ GameGlobal.LEVELS = (function () {
     ],
     zonePools: {
       0: [1, 2, 3, 4, 5, 6, 7, 8],           // 左翅（红区）
-      1: [5, 6, 7, 8, 9, 10, 11, 12],        // 右翅（蓝区），与红区重叠 5~8 = 跨区目标
+      1: [5, 6, 7, 8, 9, 10, 11, 12],        // 右翅（蓝区）
       2: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], // 躯干（橙区）
     },
-    specials: [
-      { r: 3, c: 9, type: 'cross' },   // 躯干上部：跨区
-      { r: 5, c: 9, type: 'fold' },    // 躯干中部：多折
-      { r: 6, c: 10, type: 'pierce' }, // 躯干下部：穿透
-    ],
   });
   levels.push({
     // 第26关【心心相印】：心形镂空棋盘（10×11，单分区），
-    // 藏「折/穿」两枚特殊格，体验形状棋盘 + 多折 + 穿透。
+    // 体验形状棋盘 + 分区边框主题。
     id: 26,
     name: '心心相印',
-    desc: '心形棋盘：找到特殊格，解锁多折与穿透',
+    desc: '心形棋盘：体验形状镂空与分区',
     difficulty: 4,
     rows: 10, cols: 11, fruitTypeCount: 12,
     gravity: null, frozenRatio: 0,
@@ -331,10 +317,6 @@ GameGlobal.LEVELS = (function () {
       '.....A.....',
     ],
     zonePools: { 0: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
-    specials: [
-      { r: 2, c: 4, type: 'fold' },
-      { r: 3, c: 8, type: 'pierce' },
-    ],
   });
 
   return levels;
@@ -390,9 +372,6 @@ GameGlobal.getLevelHelp = function (cfg) {
   }
   if (cfg.zonePools && Object.keys(cfg.zonePools).length > 1) {
     lines.push('分区规则：卡片边框颜色代表所属区域，默认只能消除同一区域内的水果对。');
-  }
-  if (cfg.specials && cfg.specials.length) {
-    lines.push('特殊格：消除「折/穿/跨」格子上的水果即可解锁能力——折=连线可拐 3 次，穿=连线可穿过 1 个水果，跨=不同区域也能互消。');
   }
   if (cfg.viewport) {
     lines.push('大地图：单指拖动平移棋盘，双指捏合缩放。');

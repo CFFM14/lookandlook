@@ -281,77 +281,10 @@
         for (var c = 1; c <= game.cols; c++) {
           if (!game.shape[r] || !game.shape[r][c]) continue;
           var p = game.logicToPixel(r, c);
-          var sp = game.specialMap && game.specialMap[r][c];
           this.roundRectPath(p.x - sz / 2, p.y - sz / 2, sz, sz, 10);
-          if (sp) {
-            var def = GameGlobal.SPECIAL_DEFS[sp];
-            ctx.fillStyle = def.color;
-            ctx.globalAlpha = game.unlocked[sp] ? 0.95 : 0.4;
-            ctx.fill();
-            ctx.globalAlpha = 1;
-          } else {
-            ctx.fillStyle = 'rgba(255,255,255,0.42)';
-            ctx.fill();
-          }
-        }
-      }
-    },
-
-    /** 特殊格角标：格子右上角小圆章（折/穿/跨），有卡片压着时也可见；解锁后点亮描金 */
-    drawSpecialBadges: function (game) {
-      var ctx = this.ctx;
-      var m = game.metrics;
-      for (var r = 1; r <= game.rows; r++) {
-        for (var c = 1; c <= game.cols; c++) {
-          var sp = game.specialMap && game.specialMap[r] && game.specialMap[r][c];
-          if (!sp) continue;
-          var def = GameGlobal.SPECIAL_DEFS[sp];
-          var on = game.unlocked[sp];
-          var p = game.logicToPixel(r, c);
-          var bx = p.x + m.cw / 2 - 4, by = p.y - m.cw / 2 + 4;
-          var rad = Math.max(8, m.cw * 0.16);
-          ctx.save();
-          if (on) { ctx.shadowColor = def.color; ctx.shadowBlur = 8; }
-          ctx.beginPath();
-          ctx.arc(bx, by, rad, 0, Math.PI * 2);
-          ctx.fillStyle = on ? def.color : 'rgba(120,120,130,0.85)';
+          ctx.fillStyle = 'rgba(255,255,255,0.42)';
           ctx.fill();
-          ctx.shadowBlur = 0;
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = on ? '#FFE28A' : 'rgba(255,255,255,0.75)';
-          ctx.stroke();
-          this.drawText(def.glyph, bx, by + 1, Math.max(10, rad * 1.1), '#FFF', 'center', true);
-          ctx.restore();
         }
-      }
-    },
-
-    /** 能力徽章（HUD）：折/穿/跨 三枚小圆片，解锁后点亮，位于计时下方右侧 */
-    drawAbilityChips: function (game) {
-      var ctx = this.ctx;
-      var safeTop = GameGlobal.SAFE_TOP || 0;
-      var keys = ['fold', 'pierce', 'cross'];
-      var rad = 13, gap = 8;
-      var totalW = keys.length * rad * 2 + (keys.length - 1) * gap;
-      var x0 = GameGlobal.DESIGN_W - 16 - totalW + rad;
-      var y = 78 + safeTop;
-      for (var i = 0; i < keys.length; i++) {
-        var k = keys[i];
-        var def = GameGlobal.SPECIAL_DEFS[k];
-        var on = game.unlocked[k];
-        var cx = x0 + i * (rad * 2 + gap);
-        ctx.save();
-        if (on) { ctx.shadowColor = def.color; ctx.shadowBlur = 8; }
-        ctx.beginPath();
-        ctx.arc(cx, y, rad, 0, Math.PI * 2);
-        ctx.fillStyle = on ? def.color : 'rgba(150,150,150,0.45)';
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = on ? '#FFE28A' : 'rgba(255,255,255,0.6)';
-        ctx.stroke();
-        this.drawText(def.glyph, cx, y + 1, 13, on ? '#FFF' : 'rgba(255,255,255,0.75)', 'center', true);
-        ctx.restore();
       }
     },
 
@@ -817,9 +750,6 @@
         GameGlobal.DESIGN_W / 2, 48 + safeTop, 20, '#7A4A1F', 'center', true);
       this.drawText('⏱ ' + game.getElapsed() + 's', GameGlobal.DESIGN_W - 62, 48 + safeTop, 17, '#7A4A1F', 'right', false);
 
-      // 特殊格能力指示（新玩法关）：折/穿/跨 三枚小徽章，解锁后点亮
-      if (withButtons && game.useNewEngine) this.drawAbilityChips(game);
-
       // ── 棋盘区（地板 + 卡片 + 连线 + 棋盘粒子）统一在镜头变换内 ──
       ctx.save();
       if (game.cam) {
@@ -839,8 +769,6 @@
           }
         }
       }
-      // 特殊格角标（画在卡片上方，有卡时也看得见）
-      if (game.hasShape) this.drawSpecialBadges(game);
       // 连线（消除金线 / 提示蓝线，画在卡片上层）
       this.drawConnectionLine(game.connectionLine);
       // 棋盘粒子（随镜头）

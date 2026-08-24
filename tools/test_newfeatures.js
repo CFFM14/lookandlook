@@ -1,5 +1,5 @@
 /**
- * test_newfeatures.js —— 新玩法专项测试（形状棋盘 / 分区隔离 / 特殊格 / 镜头）
+ * test_newfeatures.js —— 新玩法专项测试（形状棋盘 / 分区隔离 / 镜头）
  * mock wx 环境后加载全部模块，验证第 25/26 关的新机制与旧关回归。
  * 运行：node tools/test_newfeatures.js
  */
@@ -98,11 +98,8 @@ console.log('[A] 第25关 展翅雄鹰（形状 + 分区 + 特殊格 + 大地图
   }
   check(cardZoneOk, '卡片 zone 与地图一致');
 
-  // 特殊格位置正确（1-based）：cross(4,10) fold(6,10) pierce(7,11)
-  check(g.specialMap[4][10] === 'cross', '跨区格在躯干上部');
-  check(g.specialMap[6][10] === 'fold', '多折格在躯干中部');
-  check(g.specialMap[7][11] === 'pierce', '穿透格在躯干下部');
-  check(!g.unlocked.fold && !g.unlocked.pierce && !g.unlocked.cross, '开局能力全部未解锁');
+  // 特殊格已移除：本关不再有折/穿/跨能力解锁机制
+  check(g.zoneIsolated(), '分区默认隔离（无跨区开关）');
 
   // 跨区配对被拦截：找一个 zone0 与 zone2 中同类型的两张卡
   let blocked = null;
@@ -125,19 +122,9 @@ console.log('[A] 第25关 展翅雄鹰（形状 + 分区 + 特殊格 + 大地图
     check(false, '测试数据：没找到跨区同类型卡片（布局异常）');
   }
 
-  // 消除特殊格上的水果 → 解锁能力（直接调 eliminatePair 模拟配对消除）
-  const sp = g.cardNodes[4][10]; // cross 格上的卡
-  let mate = null;
-  for (let r = 1; r <= g.rows && !mate; r++) for (let c = 1; c <= g.cols; c++) {
-    const cd = g.cardNodes[r][c];
-    if (cd && cd !== sp && cd.type === sp.type && cd.zone === sp.zone) { mate = cd; break; }
-  }
-  check(!!mate, '为跨区格上的卡找到同区同类配对');
-  g.eliminatePair(sp, mate, [{ r: sp.r, c: sp.c }, { r: mate.r, c: mate.c }]);
-  check(g.unlocked.cross === true, '消掉跨区格水果后：跨区能力解锁');
-  check(!g.zoneIsolated(), '跨区解锁后分区不再隔离');
+  // 特殊格已移除：跨区能力不再通过消除解锁（分区默认永久隔离）
 
-  // 解锁前后 findConnectPath 参数联动（监视 findPath 的 opts）
+  // findConnectPath 参数：新引擎固定 2 折 0 穿透（经典行为）
   const g2 = new GameGlobal.Game(25);
   let seenOpts = null;
   const origFind = GameGlobal.PathChecker.findPath;
@@ -146,10 +133,7 @@ console.log('[A] 第25关 展翅雄鹰（形状 + 分区 + 特殊格 + 大地图
   };
   const cA = g2.cardNodes[1][9], cB = g2.cardNodes[1][10]; // 躯干顶行相邻两格
   g2.findConnectPath(cA, cB);
-  check(seenOpts && seenOpts.maxTurns === 2 && seenOpts.maxPierce === 0, '默认 2 折 0 穿透');
-  g2.unlocked.fold = true; g2.unlocked.pierce = true;
-  g2.findConnectPath(cA, cB);
-  check(seenOpts && seenOpts.maxTurns === 3 && seenOpts.maxPierce === 1, '解锁后 3 折 1 穿透');
+  check(seenOpts && seenOpts.maxTurns === 2 && seenOpts.maxPierce === 0, '新引擎固定 2 折 0 穿透');
   GameGlobal.PathChecker.findPath = origFind;
 }
 
@@ -198,7 +182,6 @@ console.log('[C] 第26关 心心相印（心形镂空，单分区）');
   const cx0 = g.cam.cx, s0 = g.cam.scale;
   g.panBy(80, 80); g.zoomAt(195, 400, 2);
   check(g.cam.cx === cx0 && g.cam.scale === s0, '非大地图关平移缩放被禁用');
-  check(g.specialMap[3][5] === 'fold' && g.specialMap[4][9] === 'pierce', '特殊格位置正确');
 }
 
 console.log('[D] 旧关回归（第1关必须零变化）');

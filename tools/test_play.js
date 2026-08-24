@@ -57,12 +57,11 @@ function cloneGrid(g) {
   return ng;
 }
 
-// 在 (grid 副本, zoneMap, specialMap) 上自动求解；返回 {win, moves, reshuffles}
+// 在 (grid 副本, zoneMap) 上自动求解；返回 {win, moves, reshuffles}
 function autoSolve(g, opts) {
   const rows = g.rows, cols = g.cols;
   const grid = cloneGrid(g);
-  const zoneMap = g.zoneMap, specialMap = g.specialMap;
-  const unlocked = { fold: false, pierce: false, cross: false };
+  const zoneMap = g.zoneMap;
   const moveCap = opts.moveCap || 4000;
   let reshuffles = 0;
   const reshuffleCap = opts.reshuffleCap || 200;
@@ -103,11 +102,11 @@ function autoSolve(g, opts) {
       for (let j = i + 1; j < list.length; j++) {
         const a = list[i], b = list[j];
         if (a.type !== b.type) continue;
-        // 分区规则：未跨区解锁时，必须同区
-        if (!unlocked.cross && a.zone !== b.zone) continue;
+        // 分区规则：不同分区的水果不能互消（分区默认永久隔离）
+        if (a.zone !== b.zone) continue;
         const path = GameGlobal.PathChecker.findPath(grid, rows, cols, a.r, a.c, b.r, b.c, {
-          maxTurns: unlocked.fold ? 3 : 2,
-          maxPierce: unlocked.pierce ? 1 : 0,
+          maxTurns: 2,
+          maxPierce: 0,
         });
         if (path) return { a, b };
       }
@@ -124,11 +123,9 @@ function autoSolve(g, opts) {
       reshuffle();
       continue;
     }
-    // 消除：清格 + 解锁特殊格
+    // 消除：清格
     grid[mv.a.r][mv.a.c] = 0;
     grid[mv.b.r][mv.b.c] = 0;
-    const sa = specialMap[mv.a.r][mv.a.c]; if (sa) unlocked[sa] = true;
-    const sb = specialMap[mv.b.r][mv.b.c]; if (sb) unlocked[sb] = true;
     moves++;
   }
   return { win: true, moves, reshuffles };
