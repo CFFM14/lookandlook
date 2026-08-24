@@ -32,7 +32,7 @@
       // 背景音乐（循环播放，音量压低不抢音效）
       try {
         var bgm = wx.createInnerAudioContext();
-        bgm.src = 'audio/bgm.mp3';
+        bgm.src = 'audio/bgm_gem_jam.mp3';
         bgm.loop = true;
         bgm.volume = 0.45;
         this._ctxs['bgm'] = bgm;

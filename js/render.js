@@ -576,7 +576,7 @@
       // 点击区域（轴对齐矩形即可）
       Main.buttonBounds.push({ id: 'menu_shop', x: shopX, y: shopY, w: shopW, h: shopH });
 
-      this.drawText('连连看 · 水果消消乐', cx, 765, 15, 'rgba(139,90,43,0.7)', 'center', false);
+      this.drawText('大乱炖连连消', cx, 765, 15, 'rgba(139,90,43,0.7)', 'center', false);
     },
 
     /** 金币徽章：金色圆角 + 🪙 + 数量 */
@@ -899,7 +899,7 @@
     /**
      * 结算面板 —— 全程序绘制（替代原静态图片），带弹入动画与星星点缀
      * 布局（面板内相对坐标）：
-     *   0~88 金色标题条 / 108 关卡名 / 142~252 成绩三卡 / 272 下一关 / 340 再玩一次 / 398 返回首页
+     *   0~88 金色标题条 / 108 关卡名 / 142~252 成绩三卡 / 292 下一关 / 356 再玩一次 / 406 返回首页
      */
     renderWin: function () {
       this.renderGame(false);
@@ -1018,13 +1018,23 @@
       this.drawStatCard(cardsX + 2 * (cardW + cardGap), cardsY, cardW, cardH,
         isBest ? '🏆 新纪录' : '🏆 最佳', bestText, '', isBest);
 
-      // 新纪录徽章（金色旋转小标签）
+      // 新纪录徽章（金色旋转小标签）：贴在“最佳成绩”卡右上角，位于金币行下方，不遮挡金币、不超出面板
       if (isBest) {
         ctx.save();
-        ctx.translate(px + panelW - 52, py + 150);
-        ctx.rotate(0.12);
-        var bW = 92, bH = 34;
-        this.roundRectPath(-bW / 2, -bH / 2, bW, bH, 17);
+        var badgeText = '✦ 新纪录 ✦';
+        var badgeSize = 15;
+        ctx.font = 'bold ' + badgeSize + 'px sans-serif';
+        var badgeTW = (ctx.measureText ? ctx.measureText(badgeText).width : badgeText.length * badgeSize);
+        var bW = Math.ceil(badgeTW) + 20;   // 框宽随文字自适应，文字永远不会超出框
+        var bH = 30;
+        var bestCardX = cardsX + 2 * (cardW + cardGap);
+        // 贴在最佳卡右上角偏上方（略探出卡顶与右缘，但限制在面板内），
+        // 往上一点、往右一点，避开“🏆 新纪录”标签文字
+        var badgeCx = Math.min(bestCardX + cardW - bW / 2 + 9, px + panelW - bW / 2 - 4);
+        var badgeCy = cardsY - 2;
+        ctx.translate(badgeCx, badgeCy);
+        ctx.rotate(0.04);
+        this.roundRectPath(-bW / 2, -bH / 2, bW, bH, 15);
         var badgeGrad = ctx.createLinearGradient(0, -bH / 2, 0, bH / 2);
         badgeGrad.addColorStop(0, '#FFD54A');
         badgeGrad.addColorStop(1, '#F5A623');
@@ -1033,7 +1043,7 @@
         ctx.lineWidth = 2;
         ctx.strokeStyle = '#D98A1A';
         ctx.stroke();
-        this.drawText('✦ 新纪录 ✦', 0, 1, 15, '#FFF', 'center', true);
+        this.drawText(badgeText, 0, 1, badgeSize, '#FFF', 'center', true);
         ctx.restore();
       }
 
@@ -1048,17 +1058,12 @@
           shadow: 'rgba(230,150,30,0.5)', bottomBar: '#D98A1A', radius: 16,
         });
       }
-      this.drawTextButton(bx, py + 356, btnW, 44, '📣 炫耀一下', {
-        id: 'win_share', fontSize: 20,
-        bg: '#FFFDF4', border: '#E8B34B', textColor: '#8B5A2B',
-        shadow: 'rgba(180,140,60,0.25)', radius: 14,
-      });
-      this.drawTextButton(bx, py + 406, btnW, 44, '再玩一次', {
+      this.drawTextButton(bx, py + 356, btnW, 44, '再玩一次', {
         id: 'win_replay', fontSize: 20,
         bg: '#FFFDF4', border: '#E8B34B', textColor: '#8B5A2B',
         shadow: 'rgba(180,140,60,0.25)', radius: 14,
       });
-      this.drawTextButton(bx, py + 458, btnW, 32, '返回首页', {
+      this.drawTextButton(bx, py + 406, btnW, 32, '返回首页', {
         id: 'win_home', fontSize: 16,
         bg: 'rgba(0,0,0,0)', border: 'transparent', textColor: '#A08050',
       });
@@ -1084,14 +1089,38 @@
       ctx.strokeStyle = highlight ? '#F5A623' : '#F0D9A8';
       ctx.stroke();
 
-      this.drawText(label, x + w / 2, y + 26, 13, highlight ? '#C87E0F' : '#A08060', 'center', true);
-      // 数值自适应字号：文字太长（如“12步·20s”）自动缩小，保证不出框
-      var valueSize = 24;
-      if (ctx.measureText) {
-        var maxW = w - 14;
-        while (valueSize > 12 && ctx.measureText(value).width > maxW) valueSize -= 1;
+      // 测量辅助：必须先显式把字号写入 ctx.font，否则 measureText 会沿用上一次文字的字号而失真
+      var canMeasure = !!ctx.measureText;
+      function meas(str, size) { if (!canMeasure) return 0; ctx.font = 'bold ' + size + 'px sans-serif'; return ctx.measureText(str).width; }
+
+      // 标签自适应字号：过长自动缩小，保证不出框
+      var labelSize = 13;
+      var maxLW = w - 12;
+      if (canMeasure) { while (labelSize > 10 && meas(label, labelSize) > maxLW) labelSize -= 1; }
+      this.drawText(label, x + w / 2, y + 26, labelSize, highlight ? '#C87E0F' : '#A08060', 'center', true);
+
+      // 数值自适应字号：过长自动缩小；若缩到最小仍超框，则拆成两行（优先按“·”拆分），保证不出框
+      var valueColor = highlight ? '#D98A1A' : '#5D4037';
+      var maxW = w - 14;
+      if (!canMeasure || meas(value, 24) <= maxW) {
+        this.drawText(value, x + w / 2, y + 62, 24, valueColor, 'center', true);
+      } else {
+        var vs = 24;
+        while (vs > 11 && meas(value, vs) > maxW) vs -= 1;
+        if (vs > 11 || meas(value, vs) <= maxW) {
+          this.drawText(value, x + w / 2, y + 62, vs, valueColor, 'center', true);
+        } else {
+          // 仍超框 → 拆两行（优先按“·”拆，否则从中间拆）
+          var dot = value.indexOf('·');
+          var parts = dot > 0
+            ? [value.slice(0, dot), value.slice(dot + 1)]
+            : (function () { var m = Math.ceil(value.length / 2); return [value.slice(0, m), value.slice(m)]; })();
+          var ps = 22;
+          while (ps > 11 && (meas(parts[0], ps) > maxW || meas(parts[1], ps) > maxW)) ps -= 1;
+          this.drawText(parts[0], x + w / 2, y + 52, ps, valueColor, 'center', true);
+          this.drawText(parts[1], x + w / 2, y + 78, ps, valueColor, 'center', true);
+        }
       }
-      this.drawText(value, x + w / 2, y + 62, valueSize, highlight ? '#D98A1A' : '#5D4037', 'center', true);
       if (sub) {
         this.drawText(sub, x + w / 2 + (value.length + 1) * 6, y + 62, 13, '#A08060', 'center', false);
       }

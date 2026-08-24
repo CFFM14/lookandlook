@@ -163,12 +163,6 @@
         self._ready = true;
         self.bindTouch();
         self.gameLoop();
-        // 启用右上角"转发"菜单（覆盖整个游戏，玩家随时可分享）
-        try {
-          if (wx.showShareMenu) {
-            wx.showShareMenu({ withShareTicket: false, menus: ['shareAppMessage'] });
-          }
-        } catch (e) {}
       });
     },
 

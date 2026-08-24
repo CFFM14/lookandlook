@@ -149,18 +149,6 @@
             }
           }
           break;
-        case 'win_share':
-          // 胜利后分享：必须在用户点击事件中调用，wx.shareAppMessage 才能正常触发
-          if (Main.winData) {
-            var wd = Main.winData;
-            var title = '我 ' + wd.moves + ' 步通关"水果连连看"第' + wd.levelId + '关，速来挑战！';
-            try {
-              wx.shareAppMessage({ title: title });
-            } catch (e) {
-              Main.showToast('分享功能不可用');
-            }
-          }
-          break;
         case 'btn_help':
           // 点击游戏内问号：打开本关玩法说明弹窗
           Main.helpPopupOpen = true;
