@@ -1,0 +1,159 @@
+/**
+ * test_play.js —— 自动通关求解器（验证随机生成的「分区棋盘」可解性）
+ *
+ * 思路：直接复用真实 PathChecker.findPath，在网格副本上模拟玩家消除：
+ *   - 同类型 + 同分区（未跨区解锁时）才能配对
+ *   - 消除特殊格上的水果 → 解锁对应能力（多折/穿透/跨区）
+ *   - 卡死时按分区重排（保持每区每色偶数），模拟玩家用「打乱」自救
+ * 每关跑多轮随机种子，断言全部能消到全空 —— 证明生成的随机布局一定可通关。
+ *
+ * 运行：node tools/test_play.js
+ */
+'use strict';
+
+// ── mock 微信环境（与 test_newfeatures.js 同款）─────
+global.GameGlobal = {};
+const ctxStub = {
+  setTransform() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {},
+  stroke() {}, fill() {}, fillRect() {}, arc() {}, arcTo() {}, closePath() {},
+  clip() {}, save() {}, restore() {}, translate() {}, scale() {}, rotate() {},
+  drawImage() {}, fillText() {}, createLinearGradient() { return { addColorStop() {} }; },
+  measureText() { return { width: 10 }; },
+};
+['fillStyle', 'strokeStyle', 'lineWidth', 'font', 'textAlign', 'textBaseline',
+  'globalAlpha', 'shadowColor', 'shadowBlur', 'lineJoin', 'lineCap'].forEach(k => {
+  Object.defineProperty(ctxStub, k, { set() {}, get() { return ''; } });
+});
+const memStore = { 'look_unlocked': '26' };
+global.wx = {
+  getSystemInfoSync: () => ({ windowWidth: 390, windowHeight: 844, pixelRatio: 2 }),
+  createCanvas: () => ({ width: 0, height: 0, getContext: () => ctxStub }),
+  createImage: () => ({ set src(v) { if (this.onload) setTimeout(this.onload, 0); } }),
+  onTouchStart() {}, onTouchMove() {}, onTouchEnd() {},
+  getStorageSync: (k) => (memStore[k] !== undefined ? memStore[k] : ''),
+  setStorageSync: (k, v) => { memStore[k] = v; },
+  createInnerAudioContext: () => ({ stop() {}, pause() {}, seek() {}, play() {}, set src(v) {}, set volume(v) {} }),
+};
+global.requestAnimationFrame = () => {};
+
+require('../js/config.js');
+require('../js/levels.js');
+require('../js/storage.js');
+require('../js/pathChecker.js');
+require('../js/audio.js');
+require('../js/game.js');
+require('../js/render.js');
+require('../js/ui.js');
+require('../js/main.js');
+Object.assign(global, GameGlobal);
+
+let errors = 0;
+function check(cond, name) { if (cond) console.log('  ✓ ' + name); else { console.error('  ✗ FAIL: ' + name); errors++; } }
+
+// 深度拷贝网格（rows+2 × cols+2）
+function cloneGrid(g) {
+  const ng = [];
+  for (let r = 0; r < g.rows + 2; r++) { ng[r] = []; for (let c = 0; c < g.cols + 2; c++) ng[r][c] = g.grid[r][c]; }
+  return ng;
+}
+
+// 在 (grid 副本, zoneMap, specialMap) 上自动求解；返回 {win, moves, reshuffles}
+function autoSolve(g, opts) {
+  const rows = g.rows, cols = g.cols;
+  const grid = cloneGrid(g);
+  const zoneMap = g.zoneMap, specialMap = g.specialMap;
+  const unlocked = { fold: false, pierce: false, cross: false };
+  const moveCap = opts.moveCap || 4000;
+  let reshuffles = 0;
+  const reshuffleCap = opts.reshuffleCap || 200;
+
+  function cellsLeft() {
+    let n = 0;
+    for (let r = 1; r <= rows; r++) for (let c = 1; c <= cols; c++) if (grid[r][c]) n++;
+    return n;
+  }
+
+  // 按分区重排剩余卡片（保持每区每色偶数）
+  function reshuffle() {
+    const byZone = {};
+    for (let r = 1; r <= rows; r++) for (let c = 1; c <= cols; c++) {
+      const t = grid[r][c];
+      if (!t) continue;
+      const z = zoneMap[r][c];
+      (byZone[z] = byZone[z] || []).push({ r, c, type: t });
+    }
+    for (const z in byZone) {
+      const list = byZone[z];
+      // 收集类型多集合后重新洗牌，再写回该区格子
+      const types = list.map(x => x.type);
+      for (let i = types.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const tmp = types[i]; types[i] = types[j]; types[j] = tmp; }
+      for (let i = 0; i < list.length; i++) grid[list[i].r][list[i].c] = types[i];
+    }
+    reshuffles++;
+  }
+
+  // 找一对可消除的（同类型 + 分区规则 + 寻路可达）
+  function findAnyMove() {
+    const list = [];
+    for (let r = 1; r <= rows; r++) for (let c = 1; c <= cols; c++) {
+      const t = grid[r][c];
+      if (t) list.push({ r, c, type: t, zone: zoneMap[r][c] });
+    }
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i], b = list[j];
+        if (a.type !== b.type) continue;
+        // 分区规则：未跨区解锁时，必须同区
+        if (!unlocked.cross && a.zone !== b.zone) continue;
+        const path = GameGlobal.PathChecker.findPath(grid, rows, cols, a.r, a.c, b.r, b.c, {
+          maxTurns: unlocked.fold ? 3 : 2,
+          maxPierce: unlocked.pierce ? 1 : 0,
+        });
+        if (path) return { a, b };
+      }
+    }
+    return null;
+  }
+
+  let moves = 0;
+  while (cellsLeft() > 0) {
+    if (moves >= moveCap) return { win: false, moves, reshuffles, reason: 'move cap' };
+    let mv = findAnyMove();
+    if (!mv) {
+      if (reshuffles >= reshuffleCap) return { win: false, moves, reshuffles, reason: 'stuck+reshuffle cap' };
+      reshuffle();
+      continue;
+    }
+    // 消除：清格 + 解锁特殊格
+    grid[mv.a.r][mv.a.c] = 0;
+    grid[mv.b.r][mv.b.c] = 0;
+    const sa = specialMap[mv.a.r][mv.a.c]; if (sa) unlocked[sa] = true;
+    const sb = specialMap[mv.b.r][mv.b.c]; if (sb) unlocked[sb] = true;
+    moves++;
+  }
+  return { win: true, moves, reshuffles };
+}
+
+// ── 实测：每关多轮随机种子 ──────────────────────
+const TRIALS = 25;
+const levels = [25, 26];
+for (const lv of levels) {
+  console.log('[关卡 ' + lv + '] 自动通关 ×' + TRIALS + ' 轮');
+  let wins = 0, totalMoves = 0, totalReshuffle = 0, worst = null;
+  for (let t = 0; t < TRIALS; t++) {
+    const g = new GameGlobal.Game(lv);
+    const res = autoSolve(g, { moveCap: 6000, reshuffleCap: 300 });
+    if (res.win) { wins++; totalMoves += res.moves; totalReshuffle += res.reshuffles; }
+    else { worst = res; console.error('    第' + t + '轮未通关: ' + JSON.stringify(res)); }
+  }
+  check(wins === TRIALS, '全部 ' + TRIALS + ' 轮通关（失败轮=' + (TRIALS - wins) + (worst ? ' 样例:' + JSON.stringify(worst) : '') + '）');
+  if (wins) {
+    console.log('    平均步数=' + (totalMoves / wins).toFixed(0) +
+      '，平均重排=' + (totalReshuffle / wins).toFixed(1) +
+      '（重排=模拟玩家用「打乱」自救的次数，越少越好）');
+  }
+}
+
+console.log('');
+if (errors) { console.log('自动通关测试存在失败 (' + errors + ' 项)'); process.exitCode = 1; }
+else { console.log('自动通关测试全部通过 ✓（随机分区棋盘可解性已实证）'); }
