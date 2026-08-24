@@ -94,6 +94,7 @@
     lastTime: 0,
     winShownAt: 0, // 结算面板出现时间（弹入动画基准）
     helpPopupOpen: false, // 游戏内“玩法说明”弹窗是否打开
+    pendingHelp: false, // 入场镜头结束后才弹玩法说明（特殊关卡用）
 
     buttonBounds: [],
     pressedId: null,
@@ -218,8 +219,8 @@
         if (!t || !self._touchStart) return;
         var game = self.page === 'game' ? self.game : null;
 
-        // ── 游戏页（大地图关）：双指捏合缩放 ──
-        if (game && game.cam && game.cfg.viewport && e.touches && e.touches.length >= 2) {
+        // ── 游戏页（大地图关 / 可缩放关）：双指捏合缩放 ──
+        if (game && game.cam && (game.cfg.viewport || game.cfg.zoomable) && e.touches && e.touches.length >= 2) {
           var t2 = e.touches[1];
           var dist = Math.hypot(t2.clientX - t.clientX, t2.clientY - t.clientY);
           if (self._pinch && self._pinch.dist > 0) {
@@ -232,8 +233,8 @@
           return;
         }
 
-        // ── 游戏页（大地图关）：单指拖拽平移棋盘 ──
-        if (game && game.cam && game.cfg.viewport) {
+        // ── 游戏页（大地图关 / 可缩放关）：单指拖拽平移棋盘 ──
+        if (game && game.cam && (game.cfg.viewport || game.cfg.zoomable)) {
           var gdx = (t.clientX - self._touchStart.x) / self.scale;
           var gdy = (t.clientY - self._touchStart.y) / self.scale;
           if (gdx * gdx + gdy * gdy > 64) { // 超过 8 设计像素视为拖拽
@@ -358,6 +359,15 @@
 
     showToast: function (text) {
       this.toast = { text: text, until: Date.now() + 2000 };
+    },
+
+    /** 入场镜头结束回调（game._fireIntroDone 触发）：仅在游戏页把待弹的玩法说明弹出 */
+    onIntroFinished: function () {
+      if (this.page !== 'game') { this.pendingHelp = false; return; }
+      if (this.pendingHelp) {
+        this.helpPopupOpen = true;
+        this.pendingHelp = false;
+      }
     },
 
     /** 显示胜利结算（game.onWin 调用） */

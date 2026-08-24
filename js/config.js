@@ -303,7 +303,7 @@ GameGlobal.LEVELS = (function () {
     rows: 10, cols: 11, fruitTypeCount: 12,
     gravity: null, frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
-    viewport: false,
+    viewport: false, zoomable: true, // 心形恰好入屏；但仍允许双指捏合缩放 / 单指平移细看
     shapeMap: [
       '.AA.AAA.AA.',
       'AAAAAAAAAAA',

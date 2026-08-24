@@ -1233,6 +1233,7 @@
     var self = this;
     GameGlobal.Tween.to(this.cam, { cx: to.cx, cy: to.cy, scale: to.scale }, 1500, 'easeInOut', function () {
       self._introOn = false;
+      self._fireIntroDone();
     });
   };
 
@@ -1243,11 +1244,19 @@
     var t = this._introTarget;
     this.cam.cx = t.cx; this.cam.cy = t.cy; this.cam.scale = t.scale;
     this._introOn = false;
+    this._fireIntroDone();
+  };
+
+  /** 入场镜头结束（自然播完或被点按跳过）后通知 UI 层，例如延迟弹出玩法说明 */
+  Game.prototype._fireIntroDone = function () {
+    if (GameGlobal.Main && GameGlobal.Main.onIntroFinished) {
+      GameGlobal.Main.onIntroFinished();
+    }
   };
 
   /** 平移镜头（ddx/ddy 为设计坐标位移，内容跟随手指） */
   Game.prototype.panBy = function (ddx, ddy) {
-    if (!this.cam || this._introOn || !this.cfg.viewport) return;
+    if (!this.cam || this._introOn || !(this.cfg.viewport || this.cfg.zoomable)) return;
     this.cam.cx -= ddx / this.cam.scale;
     this.cam.cy -= ddy / this.cam.scale;
     this._clampCam();
@@ -1255,7 +1264,7 @@
 
   /** 以设计坐标点 (dx,dy) 为支点缩放（该点下的棋盘内容保持不动） */
   Game.prototype.zoomAt = function (dx, dy, factor) {
-    if (!this.cam || this._introOn || !this.cfg.viewport) return;
+    if (!this.cam || this._introOn || !(this.cfg.viewport || this.cfg.zoomable)) return;
     var sc = this._boardScreenCenter();
     var ns = Math.max(this._fitScale() * 0.9, Math.min(2.2, this.cam.scale * factor));
     var wx = (dx - sc.x) / this.cam.scale + this.cam.cx;

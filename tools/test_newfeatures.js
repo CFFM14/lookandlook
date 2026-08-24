@@ -178,10 +178,10 @@ console.log('[C] 第26关 心心相印（心形镂空，单分区）');
   for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) if (g.shape[r][c]) cells++;
   check(cells === 66, '心形共 66 格（偶数可配对）got=' + cells);
   check(g.zoneCount === 1 && !g.zoneIsolated(), '单分区不隔离');
-  check(g.cam && !g.cfg.viewport, '有入场镜头但不可拖拽');
+  check(g.cam && !g.cfg.viewport && g.cfg.zoomable, '有入场镜头、非大地图但可缩放');
   const cx0 = g.cam.cx, s0 = g.cam.scale;
   g.panBy(80, 80); g.zoomAt(195, 400, 2);
-  check(g.cam.cx === cx0 && g.cam.scale === s0, '非大地图关平移缩放被禁用');
+  check(g.cam.cx !== cx0 || g.cam.scale !== s0, '心心相印可平移/缩放（双指捏合 / 单指拖动）');
 }
 
 console.log('[D] 旧关回归（第1关必须零变化）');

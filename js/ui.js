@@ -45,11 +45,17 @@
       Main.page = 'game';
       Main.winData = null;
       Main.game.startIntro(); // 新玩法关：先全景后聚焦的入场镜头（旧关 cam=null 自动无操作）
-      // 玩法说明弹窗：每次进入先关掉；若该关首次进入（未看过说明）则自动弹出并标记已看
+      // 玩法说明弹窗：每次进入先关掉；若该关首次进入（未看过说明）则弹出并标记已看。
+      // 有特殊入场镜头的关卡（cam 存在 = 25/26 关）延迟到镜头结束后再弹，避免遮挡入场动画；旧关立即弹。
       Main.helpPopupOpen = false;
+      Main.pendingHelp = false;
       if (!GameGlobal.Storage.isHelpSeen(levelId)) {
-        Main.helpPopupOpen = true;
         GameGlobal.Storage.markHelpSeen(levelId);
+        if (Main.game.cam) {
+          Main.pendingHelp = true; // 等入场镜头结束（onIntroFinished）再弹
+        } else {
+          Main.helpPopupOpen = true;
+        }
       }
     },
 
@@ -129,6 +135,7 @@
         case 'game_back':
           // 游戏内返回：主界面“开始游戏”进的 → 回主界面；选关界面进的 → 回选关界面
           Main.helpPopupOpen = false; // 离开关卡时关闭玩法说明弹窗
+          Main.pendingHelp = false;   // 一并清理：中途离场则不弹待弹说明
           if (Main.gameFrom === 'menu') UI.showMenu();
           else UI.showLevelSelect();
           break;
