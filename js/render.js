@@ -51,6 +51,23 @@
       ctx.fillText(text, x, y);
     },
 
+    /** 超宽自动截断（末尾加 …），保证文本不超出 maxWidth；measureText 不可用时降级为普通绘制 */
+    drawTextFit: function (text, x, y, maxWidth, size, color, align, bold, fontFamily) {
+      var ctx = this.ctx;
+      align = align || 'center';
+      ctx.font = (bold ? 'bold ' : '') + size + 'px ' + (fontFamily || 'sans-serif');
+      if (!ctx.measureText || ctx.measureText(text).width <= maxWidth) {
+        this.drawText(text, x, y, size, color, align, bold, fontFamily);
+        return;
+      }
+      var ell = '…';
+      var s = String(text);
+      while (s.length > 1 && ctx.measureText(s + ell).width > maxWidth) {
+        s = s.slice(0, -1);
+      }
+      this.drawText(s + ell, x, y, size, color, align, bold, fontFamily);
+    },
+
     /**
      * 程序圆角按钮 + 文字，返回是否被按下
      * opts: { id, bg, gradient:[上,下], border, textColor, radius, fontSize, icon, shadow, bottomBar }
@@ -579,7 +596,7 @@
           this.drawText('🔒', x + cardW / 2, y + 66, 22, '#FFF', 'center', false);
         } else {
           this.drawText('第' + lv.id + '关', x + cardW / 2, y + 34, 15, '#8B5A2B', 'center', true);
-          this.drawText(lv.name, x + cardW / 2, y + 58, 18, '#D2691E', 'center', true);
+          this.drawTextFit(lv.name, x + cardW / 2, y + 58, cardW - 16, 18, '#D2691E', 'center', true);
           var best = GameGlobal.Storage.getBestScore(lv.id);
           if (best) {
             this.drawText('最佳：' + best.moves + '步 ' + best.elapsed + 's',
@@ -718,30 +735,7 @@
       withButtons = withButtons !== false;
       var safeTop = GameGlobal.SAFE_TOP || 0;
 
-      // 顶部信息栏
-      if (withButtons) {
-        this.drawTextButton(16, 28 + safeTop, 68, 40, '返回', { id: 'game_back', fontSize: 15 });
-        // 玩法说明问号按钮（右上角圆形），点击弹出本关玩法
-        var helpX = GameGlobal.DESIGN_W - 44;
-        var helpY = 26 + safeTop;
-        var helpSz = 38;
-        var hcx = helpX + helpSz / 2, hcy = helpY + helpSz / 2;
-        var pressedHelp = Main.buttonPressed('btn_help');
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(hcx, hcy, helpSz / 2, 0, Math.PI * 2);
-        ctx.fillStyle = pressedHelp ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.88)';
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#E8A93D';
-        ctx.stroke();
-        ctx.restore();
-        this.drawText('?', hcx, hcy + 1, 22, '#C8761A', 'center', true);
-        Main.buttonBounds.push({ id: 'btn_help', x: helpX, y: helpY, w: helpSz, h: helpSz });
-      }
-      this.drawText('第' + game.levelId + '关 · ' + game.cfg.name,
-        GameGlobal.DESIGN_W / 2, 48 + safeTop, 20, '#7A4A1F', 'center', true);
-      this.drawText('⏱ ' + game.getElapsed() + 's', GameGlobal.DESIGN_W - 62, 48 + safeTop, 17, '#7A4A1F', 'right', false);
+      // （顶部信息栏改到棋盘之后绘制，见下方，确保 HUD 始终压在卡片上方）
 
       // ── 棋盘区（地板 + 卡片 + 连线 + 棋盘粒子）统一在镜头变换内 ──
       ctx.save();
@@ -767,6 +761,41 @@
       // 棋盘粒子（随镜头）
       this.drawParticles('board');
       ctx.restore();
+
+      // ── 顶部信息栏（画在棋盘之上：返回/标题/计时 永远压在卡片上方，不被带相机关卡拉到顶部的卡片遮挡）──
+      if (withButtons) {
+        // 顶栏底衬：遮挡被相机拉到顶部区域的卡片，保证 HUD 可读
+        var barH = safeTop + 78;
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,247,232,0.95)';
+        ctx.fillRect(0, 0, GameGlobal.DESIGN_W, barH);
+        ctx.fillStyle = 'rgba(232,169,61,0.35)';
+        ctx.fillRect(0, barH - 2, GameGlobal.DESIGN_W, 2);
+        ctx.restore();
+
+        this.drawTextButton(16, 28 + safeTop, 68, 40, '返回', { id: 'game_back', fontSize: 15 });
+        // 玩法说明问号按钮（右上角圆形），点击弹出本关玩法
+        var helpX = GameGlobal.DESIGN_W - 44;
+        var helpY = 26 + safeTop;
+        var helpSz = 38;
+        var hcx = helpX + helpSz / 2, hcy = helpY + helpSz / 2;
+        var pressedHelp = Main.buttonPressed('btn_help');
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(hcx, hcy, helpSz / 2, 0, Math.PI * 2);
+        ctx.fillStyle = pressedHelp ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.88)';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#E8A93D';
+        ctx.stroke();
+        ctx.restore();
+        this.drawText('?', hcx, hcy + 1, 22, '#C8761A', 'center', true);
+        Main.buttonBounds.push({ id: 'btn_help', x: helpX, y: helpY, w: helpSz, h: helpSz });
+      }
+      this.drawTextFit('第' + game.levelId + '关 · ' + game.cfg.name,
+        GameGlobal.DESIGN_W / 2, 48 + safeTop, GameGlobal.DESIGN_W - 170, 20, '#7A4A1F', 'center', true);
+      this.drawText('⏱ ' + game.getElapsed() + 's', GameGlobal.DESIGN_W - 62, 48 + safeTop, 17, '#7A4A1F', 'right', false);
+
       // 屏幕粒子（胜利烟花等，不随镜头）
       this.drawParticles('design');
 
@@ -906,7 +935,7 @@
       // ── 关卡名 + 金币奖励 ──
       var winData = Main.winData;
       var lvCfg = GameGlobal.getLevelConfig(winData.levelId);
-      this.drawText('第' + winData.levelId + '关 · ' + lvCfg.name, cx, py + 114, 20, '#8B5A2B', 'center', true);
+      this.drawTextFit('第' + winData.levelId + '关 · ' + lvCfg.name, cx, py + 114, panelW - 50, 20, '#8B5A2B', 'center', true);
       // 金币奖励（金色高亮）
       var coinsEarned = winData.coinsEarned || 0;
       var isFirstClearText = coinsEarned >= GameGlobal.COINS_FIRST_CLEAR;
@@ -1120,7 +1149,7 @@
       ctx.stroke();
 
       // 标题（说明第一行）
-      this.drawText(helpLines[0], cx, py + 38, 23, '#8B5A2B', 'center', true);
+      this.drawTextFit(helpLines[0], cx, py + 38, panelW - 56, 23, '#8B5A2B', 'center', true);
       // 分隔线
       ctx.strokeStyle = 'rgba(232, 169, 61, 0.5)';
       ctx.lineWidth = 1;
