@@ -74,6 +74,10 @@
   for (var fi = 1; fi <= 12; fi++) {
     IMAGE_FILES['fruit_' + (fi < 10 ? '0' : '') + fi] = 'images/fruit_' + (fi < 10 ? '0' : '') + fi + '.png';
   }
+  // 蔬菜卡组（veg_01~12.png，对应 茄子/南瓜/.../白菜）：给分区可指定不同主题
+  for (var vi = 1; vi <= 12; vi++) {
+    IMAGE_FILES['veg_' + (vi < 10 ? '0' : '') + vi] = 'images/veg_' + (vi < 10 ? '0' : '') + vi + '.png';
+  }
 
   var Main = {
     canvas: null,

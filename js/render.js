@@ -200,8 +200,10 @@
         ctx.fill();
       }
 
-      // 水果卡图：素材本身已包含卡片底座，直接铺满格子（不再叠加程序绘制的底座）
-      var img = this.images['fruit_' + (card.type < 10 ? '0' : '') + card.type];
+      // 水果/蔬菜卡图：素材本身已包含卡片底座，直接铺满格子（不再叠加程序绘制的底座）
+      // 多卡组关卡 card.type 为 'v<n>'（蔬菜）或 'f<n>'（水果）；老关仍是纯数字 1~12
+      var imgKey = GameGlobal.cardTypeToAssetKey(card.type);
+      var img = imgKey ? this.images[imgKey] : null;
       if (img) {
         ctx.drawImage(img, x, y, size, size);
       }

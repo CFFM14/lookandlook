@@ -216,8 +216,19 @@
       }
     }
     var pools = this.cfg.zonePools || {};
+    // 多卡组模式：cardSets = ['fruit','veg'] 时，type 写成 'f<n>'/'v<n>'；否则保持数字 1~12
     var allTypes = [];
-    for (var t = 1; t <= (this.cfg.fruitTypeCount || 12); t++) allTypes.push(t);
+    var cardSets = this.cfg.cardSets;
+    if (cardSets && cardSets.length) {
+      var fruitTypeCount = this.cfg.fruitTypeCount || 12;
+      for (var s = 0; s < cardSets.length; s++) {
+        var cs = GameGlobal.CARD_SETS && GameGlobal.CARD_SETS[cardSets[s]];
+        if (!cs) continue;
+        for (var t = 1; t <= fruitTypeCount; t++) allTypes.push(cs.prefix + t);
+      }
+    } else {
+      for (var t2 = 1; t2 <= (this.cfg.fruitTypeCount || 12); t2++) allTypes.push(t2);
+    }
 
     for (var z2 in byZone) {
       if (!byZone.hasOwnProperty(z2)) continue;

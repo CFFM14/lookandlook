@@ -101,12 +101,12 @@ console.log('[A] 第25关 展翅雄鹰（形状 + 分区 + 特殊格 + 大地图
   // 特殊格已移除：本关不再有折/穿/跨能力解锁机制
   check(g.zoneIsolated(), '分区默认隔离（无跨区开关）');
 
-  // 跨区配对被拦截：找一个 zone0 与 zone2 中同类型的两张卡
+  // 跨区配对被拦截：找一对同 type 但跨 zone 的卡片（zone1 右翅水果 vs zone2 躯干水果，类型池有重叠）
   let blocked = null;
   outer:
   for (let r1 = 1; r1 <= g.rows; r1++) for (let c1 = 1; c1 <= g.cols; c1++) {
     const a = g.cardNodes[r1][c1];
-    if (!a || a.zone !== 0) continue;
+    if (!a || a.zone !== 1) continue;
     for (let r2 = 1; r2 <= g.rows; r2++) for (let c2 = 1; c2 <= g.cols; c2++) {
       const b = g.cardNodes[r2][c2];
       if (b && b.zone === 2 && b.type === a.type) { blocked = [a, b]; break outer; }
@@ -120,6 +120,23 @@ console.log('[A] 第25关 展翅雄鹰（形状 + 分区 + 特殊格 + 大地图
     check(g.moves === 0, '跨区拦截不计步数');
   } else {
     check(false, '测试数据：没找到跨区同类型卡片（布局异常）');
+  }
+
+  // 多卡组分区皮（左翅 v / 右翅 f）：前缀天然隔离，玩家不会去尝试
+  let anyVeg = null, anyFruitInZone1 = null;
+  for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) {
+    const card = g.cardNodes[r][c];
+    if (!card) continue;
+    if (card.zone === 0 && typeof card.type === 'string' && card.type.charAt(0) === 'v' && !anyVeg) anyVeg = card;
+    if (card.zone === 1 && typeof card.type === 'string' && card.type.charAt(0) === 'f' && !anyFruitInZone1) anyFruitInZone1 = card;
+  }
+  check(!!anyVeg, '左翅全部是蔬菜卡（type 前缀 v）');
+  check(!!anyFruitInZone1, '右翅全部是水果卡（type 前缀 f）');
+  if (anyVeg && anyFruitInZone1) {
+    g.onTapCard(anyVeg.r, anyVeg.c);
+    g.onTapCard(anyFruitInZone1.r, anyFruitInZone1.c);
+    check(g.cardNodes[anyVeg.r][anyVeg.c] !== null && g.cardNodes[anyFruitInZone1.r][anyFruitInZone1.c] !== null,
+      '多卡组：v 卡和 f 卡天然不可互消（type 不等）');
   }
 
   // 特殊格已移除：跨区能力不再通过消除解锁（分区默认永久隔离）

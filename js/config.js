@@ -25,6 +25,37 @@ GameGlobal.FRUIT_NAMES = [
   '草莓', '菠萝', '西瓜', '青苹果', '青葡萄', '香蕉'
 ];
 
+/**
+ * 多卡组定义：让分区可指定不同主题（fruit 水果 / veg 蔬菜，未来可扩）。
+ * 配置键：
+ *   - prefix：card.type 的语义前缀，如 'f' → 'f1'，'v' → 'v1'
+ *   - assetPrefix：render.js 拿去 images 字典的键前缀，如 'fruit_' → images['fruit_01']
+ *   - names：可选的展示名数组（与 images/veg_01~12.png 一一对应）
+ * 1~24 关默认只走 fruit 套，card.type 仍是数字 1~12（零改动）；25/26 关写 cardSets 后切语义串。
+ */
+GameGlobal.CARD_SETS = {
+  fruit: { prefix: 'f', assetPrefix: 'fruit_', names: GameGlobal.FRUIT_NAMES },
+  veg:   { prefix: 'v', assetPrefix: 'veg_',
+    names: ['茄子','南瓜','西兰花','洋葱','胡萝卜','青辣椒','红薯','大蒜','蘑菇','土豆','红辣椒','白菜'] },
+};
+/** 蔬菜名称（与 images/veg_01~12.png 一一对应） */
+GameGlobal.VEG_NAMES = GameGlobal.CARD_SETS.veg.names;
+
+/** 把 card.type（'f3'/'v3'/数字 3）映射成 images 字典键 'fruit_03'/'veg_03' */
+GameGlobal.cardTypeToAssetKey = function (type) {
+  if (typeof type === 'string' && type.length >= 2) {
+    var cs = GameGlobal.CARD_SETS[type.charAt(0) === 'v' ? 'veg' : 'fruit'];
+    var num = parseInt(type.substring(1), 10);
+    if (cs && num >= 1 && num <= 12) return cs.assetPrefix + (num < 10 ? '0' + num : '' + num);
+  }
+  // 老关：纯数字 type（如 3）→ fruit_03
+  if (typeof type === 'number' || (typeof type === 'string' && /^\d+$/.test(type))) {
+    var n = +type;
+    if (n >= 1 && n <= 12) return 'fruit_' + (n < 10 ? '0' + n : '' + n);
+  }
+  return '';
+};
+
 /** 分区配色（卡片边框色，蔬菜素材到位前先用颜色区分区域） */
 GameGlobal.ZONE_COLORS = ['#E8553F', '#3F8FE8', '#F2A93B', '#9775FA', '#3FB96B', '#E85FA0'];
 /** 分区名称（玩法说明 / 提示用） */
@@ -267,13 +298,16 @@ GameGlobal.LEVELS = (function () {
   levels.push({
     // 第25关【展翅雄鹰】：鹰形棋盘（10×20 大地图，支持拖拽平移/缩放），
     // 左翅=红区 / 右翅=蓝区 / 躯干=橙区，默认只能同区消除。
+    // 分区视觉皮：左翅用蔬菜卡组，右翅用水果卡组（题材对比更直观）：
+    //   v = 蔬菜（茄子/南瓜/.../白菜）  f = 水果（柚子/.../香蕉）
     id: 25,
     name: '展翅雄鹰',
-    desc: '分区棋盘：左右翅分区，同区才能消除',
+    desc: '分区棋盘：左右翅分区，左翅蔬菜·右翅水果',
     difficulty: 5,
     rows: 10, cols: 20, fruitTypeCount: 12,
     gravity: null, frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+    cardSets: ['fruit', 'veg'], // 启用多卡组：card.type 改为 'f<n>'/'v<n>'
     viewport: true, cardSize: 46,
     shapeMap: [
       '........CCCC........',
@@ -288,21 +322,22 @@ GameGlobal.LEVELS = (function () {
       '........C..C........',
     ],
     zonePools: {
-      0: [1, 2, 3, 4, 5, 6, 7, 8],           // 左翅（红区）
-      1: [5, 6, 7, 8, 9, 10, 11, 12],        // 右翅（蓝区）
-      2: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], // 躯干（橙区）
+      0: ['v1','v2','v3','v4','v5','v6','v7','v8'],           // 左翅（红区）= 蔬菜 8 种
+      1: ['f1','f2','f3','f4','f5','f6','f7','f8'],           // 右翅（蓝区）= 水果 8 种
+      2: ['f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12'], // 躯干（橙区）= 水果全 12 种
     },
   });
   levels.push({
     // 第26关【心心相印】：心形镂空棋盘（10×11，单分区），
-    // 体验形状棋盘 + 分区边框主题。
+    // 体验形状棋盘 + 分区边框主题 + 全盘蔬菜卡组。
     id: 26,
     name: '心心相印',
-    desc: '心形棋盘：体验形状镂空与分区',
+    desc: '心形棋盘：全盘蔬菜主题',
     difficulty: 4,
     rows: 10, cols: 11, fruitTypeCount: 12,
     gravity: null, frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+    cardSets: ['veg'], // 启用多卡组（仅蔬菜）：card.type = 'v<n>'
     viewport: false, zoomable: true, // 心形恰好入屏；但仍允许双指捏合缩放 / 单指平移细看
     shapeMap: [
       '.AA.AAA.AA.',
@@ -316,7 +351,7 @@ GameGlobal.LEVELS = (function () {
       '.....A.....',
       '.....A.....',
     ],
-    zonePools: { 0: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+    zonePools: { 0: ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12'] },
   });
 
   return levels;
