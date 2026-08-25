@@ -235,11 +235,7 @@
       var cells = byZone[z2];
       var pool = pools[z2] || allTypes;
       var pairs = Math.floor(cells.length / 2);
-      var types = [];
-      for (var i = 0; i < pairs; i++) {
-        var ft = pool[Math.floor(Math.random() * pool.length)];
-        types.push(ft, ft);
-      }
+      var types = this._zoneTypeList(pool, pairs);
       // 奇数格：随机补一张（会成为孤卡，由单例机制自动消除，不会卡关）
       if (cells.length % 2 !== 0) {
         types.push(pool[Math.floor(Math.random() * pool.length)]);
@@ -255,6 +251,31 @@
       for (var c2 = 1; c2 <= this.cols; c2++) if (this.grid[r2][c2] !== 0) total++;
     }
     this.remainingPairs = Math.floor(total / 2);
+  };
+
+  /**
+   * 按分区水果池生成成对类型列表，并保证池内【每种至少出现一对】，
+   * 这样无论棋盘多大，都能用到全部种类（如雄鹰关 12 蔬菜 + 12 水果全上阵）。
+   * 剩余位置再从池中随机成对补充。
+   * @param {Array} pool 该分区可用类型（如 ['v1'..'v12']）
+   * @param {number} pairs 需要成对的数量（= floor(格子数/2)）
+   * @returns {Array} 长度 pairs*2 的类型序列
+   */
+  Game.prototype._zoneTypeList = function (pool, pairs) {
+    var need = pairs * 2;
+    var types = [];
+    var i = 0;
+    // 保证池内每种至少一对（用到全部种类）
+    while (i < pool.length && types.length + 2 <= need) {
+      types.push(pool[i], pool[i]);
+      i++;
+    }
+    // 剩余随机成对补充
+    while (types.length < need) {
+      var t = pool[Math.floor(Math.random() * pool.length)];
+      types.push(t, t);
+    }
+    return types;
   };
 
   /**
@@ -1303,7 +1324,8 @@
     var fit = this._fitScale();
     var from = { cx: b.x + b.w / 2, cy: b.y + b.h / 2, scale: fit * 0.92 };
     // 大地图关：推近到接近自然尺寸，聚焦棋盘中心；普通形状关：轻推近到 1.0
-    var toScale = this.cfg.viewport ? Math.min(1, fit * 2.2) : 1;
+    // 大地图放大系数取 4.0：棋盘越大（如 2 倍雄鹰），入场后默认视角也能看清卡片
+    var toScale = this.cfg.viewport ? Math.min(1, fit * 4.0) : 1;
     var to = { cx: b.x + b.w / 2, cy: b.y + b.h / 2, scale: toScale };
     this.cam.cx = from.cx; this.cam.cy = from.cy; this.cam.scale = from.scale;
     this._introTarget = to;

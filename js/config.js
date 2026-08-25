@@ -294,35 +294,46 @@ GameGlobal.LEVELS = (function () {
   // shapeMap 字符画：'.'=镂空(无格子)  A~H=分区 0~7 的普通格
   // zonePools：每个分区独立的水果池（不同分区的水果默认不能互消）
   levels.push({
-    // 第25关【展翅雄鹰】：鹰形棋盘（10×20 大地图，支持拖拽平移/缩放），
-    // 左翅=蔬菜区 / 右翅=水果区 / 躯干=混合区（蔬菜+水果），默认只能同区消除。
+    // 第25关【展翅雄鹰】：鹰形棋盘（20×40 大地图，由基础鹰形放大 2 倍，支持拖拽平移/缩放），
+    // 左翅=蔬菜区(全部12种) / 右翅=水果区(全部12种) / 躯干=混合区(蔬菜+水果共24种)，默认只能同区消除。
+    // 本关把所有 12 种蔬菜 + 12 种水果全用上（分区布局保证每种至少一对，不会漏用）。
     // 分区视觉皮：左翅用蔬菜卡组，右翅用水果卡组（题材对比更直观）：
     //   v = 蔬菜（茄子/南瓜/.../白菜）  f = 水果（柚子/.../香蕉）
     id: 25,
     name: '展翅雄鹰',
-    desc: '分区棋盘：左翅蔬菜·右翅水果·中间混合',
+    desc: '分区棋盘：左翅12种蔬菜·右翅12种水果·中间混合（全24种上阵）',
     difficulty: 5,
-    rows: 10, cols: 20, fruitTypeCount: 12,
+    rows: 20, cols: 40, fruitTypeCount: 12,
     gravity: null, frozenRatio: 0,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
     cardSets: ['fruit', 'veg'], // 启用多卡组：card.type 改为 'f<n>'/'v<n>'
     viewport: true, cardSize: 46,
     shapeMap: [
-      '........CCCC........',
-      '..AAA...CCCC...BBB..',
-      '.AAAAA.CCCCCC.BBBBB.',
-      'AAAAAAACCCCCCCBBBBBB',
-      'AAAAAAACCCCCCCBBBBBB',
-      '.AAAAA.CCCCCC.BBBB..',
-      '..AAAA.CCCCCC.BBB...',
-      '...AAA..CCCC..BBB...',
-      '........CCCC........',
-      '........C..C........',
+      '................CCCCCCCC................',
+      '................CCCCCCCC................',
+      '....AAAAAA......CCCCCCCC......BBBBBB....',
+      '....AAAAAA......CCCCCCCC......BBBBBB....',
+      '..AAAAAAAAAA..CCCCCCCCCCCC..BBBBBBBBBB..',
+      '..AAAAAAAAAA..CCCCCCCCCCCC..BBBBBBBBBB..',
+      'AAAAAAAAAAAAAACCCCCCCCCCCCCCBBBBBBBBBBBB',
+      'AAAAAAAAAAAAAACCCCCCCCCCCCCCBBBBBBBBBBBB',
+      'AAAAAAAAAAAAAACCCCCCCCCCCCCCBBBBBBBBBBBB',
+      'AAAAAAAAAAAAAACCCCCCCCCCCCCCBBBBBBBBBBBB',
+      '..AAAAAAAAAA..CCCCCCCCCCCC..BBBBBBBB....',
+      '..AAAAAAAAAA..CCCCCCCCCCCC..BBBBBBBB....',
+      '....AAAAAAAA..CCCCCCCCCCCC..BBBBBB......',
+      '....AAAAAAAA..CCCCCCCCCCCC..BBBBBB......',
+      '......AAAAAA....CCCCCCCC....BBBBBB......',
+      '......AAAAAA....CCCCCCCC....BBBBBB......',
+      '................CCCCCCCC................',
+      '................CCCCCCCC................',
+      '................CC....CC................',
+      '................CC....CC................',
     ],
     zonePools: {
-      0: ['v1','v2','v3','v4','v5','v6','v7','v8'],           // 左翅 = 蔬菜 8 种
-      1: ['f1','f2','f3','f4','f5','f6','f7','f8'],           // 右翅 = 水果 8 种
-      2: ['v1','v2','v3','v4','v5','v6','v7','v8','f1','f2','f3','f4','f5','f6','f7','f8'], // 躯干 = 蔬菜+水果混合
+      0: ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12'], // 左翅 = 全部 12 种蔬菜
+      1: ['f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12'], // 右翅 = 全部 12 种水果
+      2: ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12','f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12'], // 躯干 = 蔬菜+水果 24 种混合
     },
   });
   levels.push({
@@ -410,7 +421,10 @@ GameGlobal.getLevelHelp = function (cfg) {
     lines.push('大地图：单指拖动平移棋盘，双指捏合缩放。');
   }
 
-  lines.push('本关共 ' + (cfg.fruitTypeCount || 12) + ' 种水果，加油！');
+  var typeCount = cfg.fruitTypeCount || 12;
+  var hasSets = cfg.cardSets && cfg.cardSets.length >= 1;
+  if (hasSets) typeCount = cfg.cardSets.length * typeCount;
+  lines.push('本关共 ' + typeCount + ' 种' + (hasSets ? '图案' : '水果') + '，加油！');
   return lines;
 };
 

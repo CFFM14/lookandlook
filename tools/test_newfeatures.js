@@ -62,11 +62,11 @@ function zoneCounts(g) {
 console.log('[A] 第25关 展翅雄鹰（形状 + 分区 + 特殊格 + 大地图镜头）');
 {
   const g = new GameGlobal.Game(25);
-  check(g.rows === 10 && g.cols === 20, '棋盘 10×20');
+  check(g.rows === 20 && g.cols === 40, '棋盘 20×40（鹰形放大 2 倍）');
   check(g.hasShape && g.useNewEngine, '启用形状棋盘与新寻路引擎');
   const cnt = zoneCounts(g);
-  check(cnt[0] === 34 && cnt[1] === 30 && cnt[2] === 50,
-    '分区格数 红34/蓝30/橙50（均为偶数可配对） got=' + JSON.stringify(cnt));
+  check(cnt[0] === 136 && cnt[1] === 120 && cnt[2] === 200,
+    '分区格数 左翅136/右翅120/躯干200（均为偶数可配对） got=' + JSON.stringify(cnt));
   check(g.zoneCount === 3 && g.zoneIsolated(), '3 个分区且默认隔离');
 
   // 网格填充与形状一致：存在的格子必有水果，镂空/圈外必为 0
@@ -77,18 +77,35 @@ console.log('[A] 第25关 展翅雄鹰（形状 + 分区 + 特殊格 + 大地图
   }
   check(fillOk, '形状格全部填了水果');
   check(hollowOk, '镂空格保持为空');
-  check(g.remainingPairs === 57, '共 57 对 got=' + g.remainingPairs);
+  check(g.remainingPairs === 228, '共 228 对 got=' + g.remainingPairs);
 
-  // 分区水果池：左翅(zone0)只允许 1~8，右翅(zone1)只允许 5~12
+  // 分区卡组皮：左翅(zone0)只允许蔬菜 v1~v12，右翅(zone1)只允许水果 f1~f12，躯干(zone2)二者混合
   let poolOk = true;
   for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) {
     const t = g.grid[r][c];
     if (!t) continue;
     const z = g.zoneMap[r][c];
-    if (z === 0 && (t < 1 || t > 8)) poolOk = false;
-    if (z === 1 && (t < 5 || t > 12)) poolOk = false;
+    if (z === 0 && (typeof t !== 'string' || t.charAt(0) !== 'v')) poolOk = false;
+    if (z === 1 && (typeof t !== 'string' || t.charAt(0) !== 'f')) poolOk = false;
+    if (z === 2 && (typeof t !== 'string' || (t.charAt(0) !== 'v' && t.charAt(0) !== 'f'))) poolOk = false;
   }
-  check(poolOk, '分区水果池生效（左翅1~8 / 右翅5~12，重叠5~8=跨区目标）');
+  check(poolOk, '分区卡组皮生效（左翅v / 右翅f / 躯干v+f）');
+
+  // 全种类上阵：左翅覆盖全部 12 种蔬菜、右翅覆盖全部 12 种水果（保证不漏用）
+  const vegSeen = {}, fruitSeen = {};
+  for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) {
+    const t = g.grid[r][c];
+    if (typeof t !== 'string') continue;
+    if (t.charAt(0) === 'v') vegSeen[t] = true;
+    if (t.charAt(0) === 'f') fruitSeen[t] = true;
+  }
+  let allVeg = true, allFruit = true;
+  for (let n = 1; n <= 12; n++) {
+    if (!vegSeen['v' + n]) allVeg = false;
+    if (!fruitSeen['f' + n]) allFruit = false;
+  }
+  check(allVeg, '12 种蔬菜全部上阵（左翅）');
+  check(allFruit, '12 种水果全部上阵（右翅）');
 
   // 卡片带分区号
   let cardZoneOk = true;
@@ -148,7 +165,7 @@ console.log('[A] 第25关 展翅雄鹰（形状 + 分区 + 特殊格 + 大地图
   GameGlobal.PathChecker.findPath = function (grid, rows, cols, r1, c1, r2, c2, opts) {
     seenOpts = opts; return origFind.apply(this, arguments);
   };
-  const cA = g2.cardNodes[1][9], cB = g2.cardNodes[1][10]; // 躯干顶行相邻两格
+  const cA = g2.cardNodes[7][15], cB = g2.cardNodes[7][16]; // 躯干行相邻两格
   g2.findConnectPath(cA, cB);
   check(seenOpts && seenOpts.maxTurns === 2 && seenOpts.maxPierce === 0, '新引擎固定 2 折 0 穿透');
   GameGlobal.PathChecker.findPath = origFind;
@@ -159,13 +176,13 @@ console.log('[B] 镜头系统（第25关大地图）');
   const g = new GameGlobal.Game(25);
   check(!!g.cam, '大地图关有镜头');
   const fit = g._fitScale();
-  check(fit > 0.3 && fit < 0.7, '全景缩放合理（整鹰入屏）fit=' + fit.toFixed(3));
+  check(fit > 0.15 && fit < 0.45, '全景缩放合理（整鹰入屏）fit=' + fit.toFixed(3));
   g.startIntro();
   check(g._introOn === true, '入场镜头开始');
   check(Math.abs(g.cam.scale - fit * 0.92) < 0.01, '镜头起于全景位');
   g.skipIntro();
   check(g._introOn === false, '跳过入场镜头');
-  check(Math.abs(g.cam.scale - Math.min(1, fit * 2.2)) < 0.01, '跳过后直达对局视角');
+  check(Math.abs(g.cam.scale - Math.min(1, fit * 4.0)) < 0.01, '跳过后直达对局视角');
 
   // 平移与缩放 + 钳制
   const cx0 = g.cam.cx;
