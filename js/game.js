@@ -244,9 +244,10 @@
       if (cells.length % 2 !== 0) {
         types.push(pool[Math.floor(Math.random() * pool.length)]);
       }
-      this.shuffleArray(types);
+      // 铺散摆放：把同一种类尽量隔开，避免「一堆相同方块挨在一起」导致过于简单
+      var assign = this._spreadTypes(types, cells);
       for (var k = 0; k < cells.length; k++) {
-        this.grid[cells[k][0]][cells[k][1]] = types[k];
+        this.grid[cells[k][0]][cells[k][1]] = assign[k];
       }
     }
     var total = 0;
@@ -254,6 +255,72 @@
       for (var c2 = 1; c2 <= this.cols; c2++) if (this.grid[r2][c2] !== 0) total++;
     }
     this.remainingPairs = Math.floor(total / 2);
+  };
+
+  /**
+   * 铺散摆放：把同一类型的卡片尽量隔开，避免「一堆相同方块挨在一起」导致过于简单。
+   * 贪心策略：份数多的类型先铺（径向散开）——首张锚定分区质心，后续每张选「离同类已放卡片最远」的空格。
+   * 只改变同类型方块的空间分布，不改变各类型的份数，因此不影响关卡可解性。
+   * @param {Array} types 该分区全部卡片类型（每种偶数份，奇数格为孤卡）
+   * @param {Array<Array<number>>} cells 该分区格子坐标 [[r,c],...]
+   * @returns {Array} 与 cells 等长的类型序列（按 cells 顺序）
+   */
+  Game.prototype._spreadTypes = function (types, cells) {
+    var n = cells.length;
+    if (n === 0) return types;
+    // 统计每种类型份数
+    var counts = {};
+    for (var i = 0; i < types.length; i++) counts[types[i]] = (counts[types[i]] || 0) + 1;
+    // 类型按份数降序（多份的先铺，保证充分散开）
+    var typeList = [];
+    for (var t in counts) if (counts.hasOwnProperty(t)) typeList.push(t);
+    typeList.sort(function (a, b) { return counts[b] - counts[a]; });
+    // 复制队列：每种类型按其份数入队
+    var queue = [];
+    for (var q = 0; q < typeList.length; q++) {
+      var ty = typeList[q];
+      for (var c = 0; c < counts[ty]; c++) queue.push(ty);
+    }
+    // 分区质心（格子坐标均值）
+    var cx = 0, cy = 0;
+    for (var ci = 0; ci < n; ci++) { cx += cells[ci][1]; cy += cells[ci][0]; }
+    cx /= n; cy /= n;
+    var used = [];
+    for (var u = 0; u < n; u++) used.push(false);
+    var placedByType = {};
+    var assign = [];
+    for (var a = 0; a < n; a++) assign.push(null);
+
+    for (var p = 0; p < queue.length; p++) {
+      var curType = queue[p];
+      var already = placedByType[curType] || [];
+      var bestIdx = -1, bestVal = -1;
+      for (var idx = 0; idx < n; idx++) {
+        if (used[idx]) continue;
+        var rr = cells[idx][0], cc = cells[idx][1];
+        var val;
+        if (already.length === 0) {
+          // 首张：离质心最近（锚定中心），后续同类型向外辐射散开
+          var d0 = (rr - cy) * (rr - cy) + (cc - cx) * (cc - cx);
+          if (bestIdx < 0 || d0 < bestVal) { bestVal = d0; bestIdx = idx; }
+          continue;
+        } else {
+          // 后续：选与同类已放卡片「最小距离」最大者（尽量隔开）
+          var minD = Infinity;
+          for (var m = 0; m < already.length; m++) {
+            var pr = cells[already[m]][0], pc = cells[already[m]][1];
+            var dd = (rr - pr) * (rr - pr) + (cc - pc) * (cc - pc);
+            if (dd < minD) minD = dd;
+          }
+          val = minD;
+        }
+        if (val > bestVal) { bestVal = val; bestIdx = idx; }
+      }
+      used[bestIdx] = true;
+      assign[bestIdx] = curType;
+      (placedByType[curType] = placedByType[curType] || []).push(bestIdx);
+    }
+    return assign;
   };
 
   /** 创建卡片对象（含视觉状态） */
