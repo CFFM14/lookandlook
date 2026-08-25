@@ -1126,9 +1126,22 @@
       ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
       ctx.fillRect(0, 0, GameGlobal.DESIGN_W, GameGlobal.DESIGN_H);
 
-      var panelW = 330, panelH = 326;
+      var safeTop = GameGlobal.SAFE_TOP || 0;
+      var panelW = 330;
+      var textW = panelW - 56;
+      var lineH = 26;
+
+      // 先按内容字号(15px)设置字体再测量换行行数，得到面板所需高度（自适应），避免文字溢出框外
+      ctx.font = '15px sans-serif';
+      var contentH = 0;
+      for (var ci = 1; ci < helpLines.length; ci++) {
+        var wlines = this.wrapText(helpLines[ci], textW);
+        contentH += wlines.length * lineH + 4;
+      }
+      // 上部分（标题+分隔线 92）+ 下部分（按钮区 78）；超高则夹到屏幕内
+      var panelH = Math.min(92 + contentH + 78, GameGlobal.DESIGN_H - 60);
       var px = cx - panelW / 2;
-      var py = (GameGlobal.DESIGN_H - panelH) / 2;
+      var py = Math.max(safeTop + 10, (GameGlobal.DESIGN_H - panelH) / 2);
 
       // 面板主体（暖金渐变 + 投影）
       ctx.save();
