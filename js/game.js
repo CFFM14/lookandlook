@@ -17,6 +17,10 @@
   function Game(levelId) {
     this.levelId = levelId;
     this.cfg = GameGlobal.getLevelConfig(levelId);
+    // 注水关为「引用版」（只有 shapeKey/k/zoneMode/cardSet），在此按需展开成完整 shapeMap（用 shapes.js 运行时重建）
+    if (this.cfg.shapeKey && !this.cfg.shapeMap && typeof GameGlobal.expandShapeRef === 'function') {
+      GameGlobal.expandShapeRef(this.cfg);
+    }
     this.rows = this.cfg.rows;
     this.cols = this.cfg.cols;
     this.metrics = GameGlobal.getGridMetrics(this.cfg);
