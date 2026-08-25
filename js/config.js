@@ -11,6 +11,61 @@
 GameGlobal.DESIGN_W = 390;
 GameGlobal.DESIGN_H = 844;
 
+// 形状素材库（运行时加载，用于注水关 shapeMap 的按需展开，避免把放大后的字符画写死进 levels_injected.js）
+require('./shapes.js');
+
+// 注水关「引用版」（只有 shapeKey/k/zoneMode/cardSet）在运行时展开成完整 shapeMap/zonePools/rows/cols，
+// 用 shapes.js 重建 —— 这样 levels_injected.js 从 ~1.3MB 降到几十 KB。
+(function () {
+  var FRUIT = ['f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12'];
+  var VEG   = ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12'];
+  function splitLR(rows) {
+    var cols = rows[0].length, mid = Math.ceil(cols / 2);
+    return rows.map(function (row) {
+      return row.split('').map(function (ch, c) { return (ch === 'A' && c >= mid) ? 'B' : ch; }).join('');
+    });
+  }
+  function splitTB(rows) {
+    var R = rows.length, mid = Math.ceil(R / 2);
+    return rows.map(function (row, r) {
+      return row.split('').map(function (ch) { return (ch === 'A' && r >= mid) ? 'B' : ch; }).join('');
+    });
+  }
+  GameGlobal.expandShapeRef = function (cfg) {
+    if (!cfg.shapeKey || cfg.shapeMap) return cfg;
+    var base = GameGlobal.SHAPES[cfg.shapeKey];
+    if (!base) return cfg;
+    var scaled = GameGlobal.scaleShape(base, cfg.k || 1);
+    if (cfg.zoneMode === 'lr') scaled = splitLR(scaled);
+    else if (cfg.zoneMode === 'tb') scaled = splitTB(scaled);
+    cfg.shapeMap = scaled;
+    var sz = GameGlobal.shapeSize(scaled);
+    cfg.rows = sz.rows; cfg.cols = sz.cols;
+    if (cfg.zoneMode === 'single') {
+      var pool = cfg.cardSet === 'mixed' ? FRUIT.concat(VEG)
+        : (cfg.cardSet === 'fruit' ? FRUIT : VEG);
+      cfg.zonePools = { 0: pool };
+    } else {
+      cfg.zonePools = { 0: FRUIT.slice(), 1: VEG.slice() };
+    }
+    // 常量 / 派生字段：不再写死进 levels_injected.js，运行时补全，文件体积极小
+    cfg.fruitTypeCount = 12;
+    cfg.gravity = null;
+    cfg.hintEnabled = true;
+    cfg.bombEnabled = true;
+    cfg.shuffleEnabled = true;
+    cfg.cardSets = cfg.zoneMode === 'single'
+      ? (cfg.cardSet === 'mixed' ? ['fruit', 'veg'] : [cfg.cardSet])
+      : ['fruit', 'veg'];
+    // 大棋盘 → 大地图（双指缩放/单指平移）；否则允许缩放手势（心形等）
+    var cells = 0, ri, ci;
+    for (ri = 0; ri < scaled.length; ri++) for (ci = 0; ci < scaled[ri].length; ci++) if (scaled[ri][ci] !== '.') cells++;
+    cfg.viewport = cells > 400;
+    cfg.zoomable = !cfg.viewport;
+    return cfg;
+  };
+})();
+
 /** 布局常量 */
 GameGlobal.TOP_BAR_H = 96;       // 顶部信息区高度（返回/关卡名/计时）
 GameGlobal.BOTTOM_BAR_H = 116;    // 底部工具按钮区高度
@@ -383,9 +438,15 @@ GameGlobal.LEVELS_PER_PAGE = 10;
 /** 根据关卡编号获取配置 */
 GameGlobal.getLevelConfig = function (id) {
   for (var i = 0; i < GameGlobal.LEVELS.length; i++) {
-    if (GameGlobal.LEVELS[i].id === id) return GameGlobal.LEVELS[i];
+    if (GameGlobal.LEVELS[i].id === id) {
+      var c = GameGlobal.LEVELS[i];
+      if (typeof GameGlobal.expandShapeRef === 'function') GameGlobal.expandShapeRef(c);
+      return c;
+    }
   }
-  return GameGlobal.LEVELS[0];
+  var first = GameGlobal.LEVELS[0];
+  if (typeof GameGlobal.expandShapeRef === 'function') GameGlobal.expandShapeRef(first);
+  return first;
 };
 
 /**

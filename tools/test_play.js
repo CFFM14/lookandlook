@@ -175,6 +175,7 @@ for (const lv of levels) {
   // 强制包含大地图代表（>800 格）与厚冰代表，确保极端关也能通关（各限量 4 个，控时）
   const bigRep = [], iceRep = [];
   all.forEach((lv) => {
+    GameGlobal.expandShapeRef(lv); // 引用版 → 完整 shapeMap（幂等，顺便缓存）
     const cells = lv.shapeMap.reduce((s, r) => s + r.replace(/\./g, '').length, 0);
     if (cells > 800) bigRep.push(lv.id);
     if (lv.frozenRatio >= 0.3) iceRep.push(lv.id);

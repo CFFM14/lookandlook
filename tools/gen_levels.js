@@ -17,7 +17,7 @@
  *   · 大棋盘(>400格)用 viewport 大地图（双指缩放/单指平移）。
  *
  * 输出：js/levels_injected.js —— GameGlobal.INJECTED_LEVELS = [...]
- *   （shapeMap 已展开为字符串数组，不依赖运行时 shapes.js，config.js 直接 concat）
+ *   （引用版：仅存 shapeKey/k/zoneMode/cardSet；shapeMap/zonePools 由运行时 config.js 的 expandShapeRef 用 shapes.js 重建，文件体积极小）
  *
  * 运行：node tools/gen_levels.js
  */
@@ -78,15 +78,6 @@ function buildSpec(o) {
   const variant = sizeTag + cardTag + iceTag + zoneTag;
   const name = variant ? (cn + '·' + variant) : cn;
 
-  let desc;
-  if (o.zoneMode === 'single') {
-    const setCn = o.cardSet === 'fruit' ? '全盘水果' : o.cardSet === 'veg' ? '全盘蔬菜' : '果蔬混合';
-    desc = '形状关：' + setCn + (o.fr > 0 ? ('，含' + (o.fr === 0.2 ? '薄' : '厚') + '冰') : '');
-  } else {
-    desc = (o.zoneMode === 'lr' ? '左右分区：左果右蔬' : '上下分区：上果下蔬') +
-           (o.fr > 0 ? ('，含' + (o.fr === 0.2 ? '薄' : '厚') + '冰') : '');
-  }
-
   // 难度分数（用于平滑排序）：尺寸 + 双区 + 冰 + 混合 + 棋盘规模
   const score = o.k
     + (o.zoneMode !== 'single' ? 1 : 0)
@@ -96,16 +87,12 @@ function buildSpec(o) {
   const difficulty = Math.min(5, Math.max(1, 1 + Math.floor(score / 2)));
 
   const lv = {
-    name: name, desc: desc, difficulty: difficulty,
-    rows: o.sz.rows, cols: o.sz.cols, fruitTypeCount: 12,
-    gravity: null, frozenRatio: o.fr,
-    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
-    cardSets: o.cardSets,
-    shapeMap: o.scaled,
-    zonePools: o.zonePools,
+    name: name, difficulty: difficulty,
+    frozenRatio: o.fr,
+    // 引用版：只存形状名+倍数+分区模式+卡组+冰档，其余（shapeMap/zonePools/rows/cols/
+    // cardSets/viewport/fruitTypeCount 等）运行时由 config.js 的 expandShapeRef 用 shapes.js 重建
+    shapeKey: o.name, k: o.k, zoneMode: o.zoneMode, cardSet: o.cardSet || null,
   };
-  if (o.isViewport) { lv.viewport = true; lv.cardSize = 46; }
-  else { lv.viewport = false; lv.zoomable = true; }
 
   return { score: score, name: o.name, lv: lv };
 }
@@ -162,18 +149,10 @@ lines.push('// 自动生成，勿手改 —— 由 tools/gen_levels.js 产出（
 lines.push('// 共 ' + levels.length + ' 关，id 从 27 起，按难度平滑递进。');
 lines.push('GameGlobal.INJECTED_LEVELS = [');
 for (const lv of levels) {
-  const shapeRows = lv.shapeMap.map(r => "      '" + r + "'").join(',\n');
   lines.push('  {');
-  lines.push("    id: " + lv.id + ", name: '" + lv.name + "', desc: '" + lv.desc + "', difficulty: " + lv.difficulty + ",");
-  lines.push("    rows: " + lv.rows + ", cols: " + lv.cols + ", fruitTypeCount: 12,");
-  lines.push("    gravity: null, frozenRatio: " + lv.frozenRatio + ",");
-  lines.push("    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,");
-  lines.push("    cardSets: " + JSON.stringify(lv.cardSets) + ",");
-  lines.push("    " + (lv.viewport ? "viewport: true, cardSize: 46" : "viewport: false, zoomable: true") + ",");
-  lines.push("    shapeMap: [");
-  lines.push(shapeRows);
-  lines.push("    ],");
-  lines.push("    zonePools: " + JSON.stringify(lv.zonePools) + ",");
+  lines.push("    id: " + lv.id + ", name: '" + lv.name + "', difficulty: " + lv.difficulty + ",");
+  lines.push("    frozenRatio: " + lv.frozenRatio + ",");
+  lines.push("    shapeKey: '" + lv.shapeKey + "', k: " + lv.k + ", zoneMode: '" + lv.zoneMode + "', cardSet: " + (lv.cardSet ? "'" + lv.cardSet + "'" : 'null') + ",");
   lines.push("  },");
 }
 lines.push('];');
@@ -182,13 +161,14 @@ lines.push("if (typeof module !== 'undefined' && module.exports) module.exports 
 const target = path.join(__dirname, '..', 'js', 'levels_injected.js');
 fs.writeFileSync(target, lines.join('\n'), 'utf8');
 
-// ── 统计 ──
+// ── 统计（用形状库重新推导，不依赖已删除的存储字段）──
 const stat = { single: 0, double: 0, frozen: 0, viewport: 0, big: 0 };
 for (const lv of levels) {
-  if (lv.zonePools[1]) stat.double++; else stat.single++;
+  if (lv.zoneMode !== 'single') stat.double++; else stat.single++;
   if (lv.frozenRatio > 0) stat.frozen++;
-  if (lv.viewport) stat.viewport++;
-  if (cellCount(lv.shapeMap) > 400) stat.big++;
+  let s = scaleShape(SHAPES[lv.shapeKey], lv.k);
+  if (lv.zoneMode === 'lr') s = splitLR(s); else if (lv.zoneMode === 'tb') s = splitTB(s);
+  if (cellCount(s) > 400) { stat.viewport++; stat.big++; }
 }
 console.log('生成 ' + levels.length + ' 关 → ' + target);
 console.log('总关卡数（含 1~26）= ' + (levels.length + 26));
