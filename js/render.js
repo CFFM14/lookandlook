@@ -762,17 +762,14 @@
       this.drawParticles('board');
       ctx.restore();
 
-      // ── 顶部信息栏（画在棋盘之上：返回/标题/计时 永远压在卡片上方，不被带相机关卡拉到顶部的卡片遮挡）──
+      // ── 顶部信息栏（画在棋盘之上：返回/标题/计时 永远压在卡片上方）──
+      // 不用实心底衬（会多出一条丑陋的页眉带）；改用白色文字阴影，保证 HUD 在彩色卡片上也清晰
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,255,255,0.92)';
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 1;
       if (withButtons) {
-        // 顶栏底衬：遮挡被相机拉到顶部区域的卡片，保证 HUD 可读
-        var barH = safeTop + 78;
-        ctx.save();
-        ctx.fillStyle = 'rgba(255,247,232,0.95)';
-        ctx.fillRect(0, 0, GameGlobal.DESIGN_W, barH);
-        ctx.fillStyle = 'rgba(232,169,61,0.35)';
-        ctx.fillRect(0, barH - 2, GameGlobal.DESIGN_W, 2);
-        ctx.restore();
-
         this.drawTextButton(16, 28 + safeTop, 68, 40, '返回', { id: 'game_back', fontSize: 15 });
         // 玩法说明问号按钮（右上角圆形），点击弹出本关玩法
         var helpX = GameGlobal.DESIGN_W - 44;
@@ -795,6 +792,7 @@
       this.drawTextFit('第' + game.levelId + '关 · ' + game.cfg.name,
         GameGlobal.DESIGN_W / 2, 48 + safeTop, GameGlobal.DESIGN_W - 170, 20, '#7A4A1F', 'center', true);
       this.drawText('⏱ ' + game.getElapsed() + 's', GameGlobal.DESIGN_W - 62, 48 + safeTop, 17, '#7A4A1F', 'right', false);
+      ctx.restore();
 
       // 屏幕粒子（胜利烟花等，不随镜头）
       this.drawParticles('design');
