@@ -68,13 +68,15 @@ function cellCount(shapeMap) {
 
 function buildSpec(o) {
   const cn = SHAPE_CN[o.name] || o.name;
-  const sizeTag = o.k === 1 ? '' : (o.k === 2 ? '·大' : '·巨');
-  const zoneTag = o.zoneMode === 'single' ? '' : (o.zoneMode === 'lr' ? '·左右' : '·上下');
+  const sizeTag = o.k === 1 ? '' : (o.k === 2 ? '大' : '巨');
+  const zoneTag = o.zoneMode === 'single' ? '' : (o.zoneMode === 'lr' ? '左右' : '上下');
   const cardTag = o.zoneMode === 'single'
-    ? (o.cardSet === 'fruit' ? '·果' : o.cardSet === 'veg' ? '·蔬' : '·混')
+    ? (o.cardSet === 'fruit' ? '果' : o.cardSet === 'veg' ? '蔬' : '混')
     : '';
-  const iceTag = o.fr === 0 ? '' : (o.fr === 0.2 ? '·薄冰' : '·厚冰');
-  const name = cn + sizeTag + zoneTag + cardTag + iceTag;
+  const iceTag = o.fr === 0 ? '' : (o.fr === 0.2 ? '薄' : '厚');
+  // 紧凑变体串（尺寸+卡组+冰+分区，无分隔），仅用「·」把图案名与变体分开，便于在窄卡片上完整显示
+  const variant = sizeTag + cardTag + iceTag + zoneTag;
+  const name = variant ? (cn + '·' + variant) : cn;
 
   let desc;
   if (o.zoneMode === 'single') {
