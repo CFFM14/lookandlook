@@ -375,7 +375,7 @@
       // 分区隔离：不同分区的水果默认不能互消（跨区特殊格解锁后放行）
       if (this.zoneIsolated() && first.zone !== card.zone) {
         var zn = GameGlobal.ZONE_NAMES || [];
-        GameGlobal.Main.showToast('不同区域的水果不能互消（' +
+        GameGlobal.Main.showToast('不同区域的卡片不能互消（' +
           (zn[first.zone] || '') + ' ≠ ' + (zn[card.zone] || '') + '）');
         this.showMismatch(first, card);
         return;

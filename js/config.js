@@ -56,10 +56,8 @@ GameGlobal.cardTypeToAssetKey = function (type) {
   return '';
 };
 
-/** 分区配色（卡片边框色，蔬菜素材到位前先用颜色区分区域） */
-GameGlobal.ZONE_COLORS = ['#E8553F', '#3F8FE8', '#F2A93B', '#9775FA', '#3FB96B', '#E85FA0'];
-/** 分区名称（玩法说明 / 提示用） */
-GameGlobal.ZONE_NAMES = ['红区', '蓝区', '橙区', '紫区', '绿区', '粉区'];
+/** 分区名称（玩法说明 / 提示用，中性命名；分区视觉现在靠卡片图案区分，不再用边框颜色） */
+GameGlobal.ZONE_NAMES = ['左区', '右区', '中区', '四区', '五区', '六区'];
 
 /**
  * 关卡配置：前 16 关为手调配好的经典关（1普通 → 2下坠 → 3上浮 → 4左移 → 5右移 → 6冰冻…），
@@ -406,7 +404,7 @@ GameGlobal.getLevelHelp = function (cfg) {
     lines.push('特殊棋盘：棋盘不是矩形，空白处没有卡片，开局镜头会先展示整个图案。');
   }
   if (cfg.zonePools && Object.keys(cfg.zonePools).length > 1) {
-    lines.push('分区规则：卡片边框颜色代表所属区域，默认只能消除同一区域内的水果对。');
+    lines.push('分区规则：靠卡片图案区分所属区域（如左翅蔬菜、右翅水果），默认只能消除同一区域内的卡片对。');
   }
   if (cfg.viewport) {
     lines.push('大地图：单指拖动平移棋盘，双指捏合缩放。');

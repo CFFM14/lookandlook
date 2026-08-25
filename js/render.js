@@ -191,15 +191,6 @@
       }
       x += dx;
 
-      // 分区边框（多分区关）：卡片底下垫一圈分区色，一眼看出所属区域
-      var game0 = Main.game;
-      if (game0 && game0.zoneCount > 1 && card.zone !== undefined) {
-        var zc = (GameGlobal.ZONE_COLORS || [])[card.zone] || '#999';
-        this.roundRectPath(x - 2.5, y - 2.5, size + 5, size + 5, Math.max(6, size * 0.18));
-        ctx.fillStyle = zc;
-        ctx.fill();
-      }
-
       // 水果/蔬菜卡图：素材本身已包含卡片底座，直接铺满格子（不再叠加程序绘制的底座）
       // 多卡组关卡 card.type 为 'v<n>'（蔬菜）或 'f<n>'（水果）；老关仍是纯数字 1~12
       var imgKey = GameGlobal.cardTypeToAssetKey(card.type);
