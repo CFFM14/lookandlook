@@ -63,20 +63,20 @@
   // ══════════════════════════════════════════════
 
   var IMAGE_FILES = {
-    bg_menu: 'images/bg_menu.jpg',
-    bg_game: 'images/bg_game.jpg',
-    title_menu: 'images/title_menu.png',
-    title_game: 'images/title_game.png',
-    btn_bomb: 'images/btn_bomb.png',
-    btn_shuffle: 'images/btn_shuffle.png',
-    btn_hint: 'images/btn_hint.png',
+    bg_menu: 'images/bg_menu.webp',
+    bg_game: 'images/bg_game.webp',
+    title_menu: 'images/title_menu.webp',
+    title_game: 'images/title_game.webp',
+    btn_bomb: 'images/btn_bomb.webp',
+    btn_shuffle: 'images/btn_shuffle.webp',
+    btn_hint: 'images/btn_hint.webp',
   };
   for (var fi = 1; fi <= 12; fi++) {
-    IMAGE_FILES['fruit_' + (fi < 10 ? '0' : '') + fi] = 'images/fruit_' + (fi < 10 ? '0' : '') + fi + '.png';
+    IMAGE_FILES['fruit_' + (fi < 10 ? '0' : '') + fi] = 'images/fruit_' + (fi < 10 ? '0' : '') + fi + '.webp';
   }
   // 蔬菜卡组（veg_01~12.png，对应 茄子/南瓜/.../白菜）：给分区可指定不同主题
   for (var vi = 1; vi <= 12; vi++) {
-    IMAGE_FILES['veg_' + (vi < 10 ? '0' : '') + vi] = 'images/veg_' + (vi < 10 ? '0' : '') + vi + '.png';
+    IMAGE_FILES['veg_' + (vi < 10 ? '0' : '') + vi] = 'images/veg_' + (vi < 10 ? '0' : '') + vi + '.webp';
   }
 
   var Main = {
