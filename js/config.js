@@ -65,6 +65,8 @@ GameGlobal.ZONE_NAMES = ['左区', '右区', '中区', '四区', '五区', '六�
  * 不再自动生成 17~576 的随机关卡。
  */
 GameGlobal.LEVELS = (function () {
+  // 注入自动生成的批量注水关卡（形状棋盘），由 tools/gen_levels.js 产出（id 从 27 起）
+  require('./levels_injected.js');
   var HANDBOOK = [
     {
       // 第1关【水果初识】：经典连连看入门，无重力、无冰冻，12 种水果（10×8 棋盘），点两张相同水果连线消除
@@ -362,6 +364,13 @@ GameGlobal.LEVELS = (function () {
     ],
     zonePools: { 0: ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12'] },
   });
+
+  // ── 注入注水关卡（tools/gen_levels.js 自动生成，id 从 27 起）──
+  if (GameGlobal.INJECTED_LEVELS && GameGlobal.INJECTED_LEVELS.length) {
+    for (var zi = 0; zi < GameGlobal.INJECTED_LEVELS.length; zi++) {
+      levels.push(GameGlobal.INJECTED_LEVELS[zi]);
+    }
+  }
 
   return levels;
 })();

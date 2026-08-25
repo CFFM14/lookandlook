@@ -1,414 +1,194 @@
-/**
- * gen_levels.js —— 固定关卡布局生成器
- *
- * 用法：
- *   node tools/gen_levels.js           生成 js/levels.js（576 关固定布局）
- *   node tools/gen_levels.js --stats   只统计各章节可解率，不写文件
- *
- * 逻辑：
- *   1. 读取 config.js 中的关卡参数（棋盘大小 / 水果种类 / 重力 / 冰冻比例）。
- *   2. 用确定性种子生成「水果类型布局 + 冰冻位置」，完全复刻 game.js 的成对生成与成对冻结规则。
- *   3. 用与游戏完全一致的状态机（连线判定 + 冰冻三态 + 重力压实）搜索一条可通关的消除顺序，
- *      找不到则换下一个种子重试 —— 保证固化下来的每一关都能靠正常配对消完（不触发死局自动清场）。
- *   4. 输出 js/levels.js：每关 { g: 行优先类型数组(1..12), f: 冰冻下标数组 }。
- */
 'use strict';
-
+/**
+ * tools/gen_levels.js —— 形状棋盘批量「注水」关卡生成器
+ *
+ * 目标：把现有 26 关扩展到 1000+ 关，靠「形状 × 尺寸 × 分区模式 × 卡组 × 冰档」系统化组合。
+ *
+ * 维度：
+ *   · 形状：SHAPES 25 个手工图案（排除 eagle，雄鹰作为第 25 关独家）
+ *   · 尺寸：scale k ∈ {1,2,3}（放大后总格数 > MAX_CELLS 则跳过该尺寸，避免真机卡顿）
+ *   · 分区模式：single（单区）/ lr（左右分区，左果右蔬）/ tb（上下分区，上果下蔬）
+ *   · 卡组（仅单区）：fruit（全盘水果）/ veg（全盘蔬菜）/ mixed（果蔬混合 24 种）
+ *   · 冰档：0 / 0.2 / 0.3（形状关冰冻按同类型两两配对，保证可解）
+ *
+ * 可解性保证（全部复用 game.js 现有机制，已在 25/26 关实证）：
+ *   · 每分区 _zoneTypeList 保证池内每种至少一对；_spreadTypes 铺散避免同型扎堆；
+ *   · 奇数格补孤卡，结算前 singleton 机制自动收掉，不卡关；
+ *   · 大棋盘(>400格)用 viewport 大地图（双指缩放/单指平移）。
+ *
+ * 输出：js/levels_injected.js —— GameGlobal.INJECTED_LEVELS = [...]
+ *   （shapeMap 已展开为字符串数组，不依赖运行时 shapes.js，config.js 直接 concat）
+ *
+ * 运行：node tools/gen_levels.js
+ */
 const fs = require('fs');
 const path = require('path');
+const G = require('../js/shapes.js');
+const SHAPES = G.SHAPES;
+const scaleShape = G.scaleShape;
+const shapeSize = G.shapeSize;
+const shapeNames = G.shapeNames;
 
-if (!global.GameGlobal) global.GameGlobal = {};
-require('../js/config.js');
-const PathChecker = require('../js/pathChecker.js');
+const MAX_CELLS = 1100;          // 放大后总格数上限（超出则跳过该尺寸，避免真机卡顿）
+const EXCLUDE = new Set(['eagle']); // 雄鹰作为第 25 关独家，不进入注水池
+const FROZEN = [0, 0.2, 0.3];
 
-// ───────────────────────────── 确定性 PRNG ─────────────────────────────
+const SHAPE_CN = {
+  heart: '爱心', star: '星星', circle: '圆', diamond: '菱形', triangle: '三角',
+  square: '方块', ring: '圆环', cross: '十字', crescent: '月牙', flower: '花',
+  tree: '树', fish: '鱼', cat: '猫', house: '房子', sun: '太阳', cloud: '云',
+  mushroom: '蘑菇', leaf: '叶子', drop: '水滴', smiley: '笑脸', music: '音符',
+  crown: '皇冠', gift: '礼物', shield: '盾牌', butterfly: '蝴蝶',
+};
 
-/** mulberry32：小而快的 32 位种子随机数（确定性，跨 Node 版本稳定） */
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a |= 0;
-    a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+const FRUIT = ['f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12'];
+const VEG   = ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12'];
+const MIXED = FRUIT.concat(VEG);
+
+function splitLR(rows) {
+  const cols = rows[0].length, mid = Math.ceil(cols / 2);
+  return rows.map(row => row.split('').map((ch, c) => (ch === 'A' && c >= mid) ? 'B' : ch).join(''));
 }
-
-function shuffle(arr, rand) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    const tmp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = tmp;
-  }
+function splitTB(rows) {
+  const R = rows.length, mid = Math.ceil(R / 2);
+  return rows.map((row, r) => row.split('').map(ch => (ch === 'A' && r >= mid) ? 'B' : ch).join(''));
 }
-
-// ───────────────────────── 布局生成（复刻 game.js）─────────────────────────
-
-/** 行优先类型数组：成对水果 + Fisher-Yates 洗牌（用种子随机源） */
-function genFlatTypes(cfg, rand) {
-  const totalCards = cfg.rows * cfg.cols;
-  const pairsNeeded = totalCards / 2;
-  const types = [];
-  const basePairs = Math.floor(pairsNeeded / cfg.fruitTypeCount);
-  const remaining = pairsNeeded - basePairs * cfg.fruitTypeCount;
-
-  for (let type = 1; type <= cfg.fruitTypeCount; type++) {
-    for (let p = 0; p < basePairs; p++) types.push(type, type);
+function countZones(shapeMap) {
+  const cnt = {};
+  for (const row of shapeMap) for (const ch of row) {
+    if (ch !== '.' && ch >= 'A' && ch <= 'H') cnt[ch] = (cnt[ch] || 0) + 1;
   }
-  for (let i = 0; i < remaining; i++) {
-    const t = Math.floor(rand() * cfg.fruitTypeCount) + 1;
-    types.push(t, t);
-  }
-  shuffle(types, rand);
-  return types;
+  return cnt;
 }
-
-/** 成对冻结（复刻 game.js applyFrozen）：同类型两两成对，取偶数张 */
-function pickFrozen(cfg, flatTypes, rand) {
-  const byType = {};
-  flatTypes.forEach((t, idx) => {
-    (byType[t] = byType[t] || []).push(idx);
-  });
-  const pairs = [];
-  for (const t in byType) {
-    const list = byType[t];
-    for (let i = 0; i + 1 < list.length; i += 2) pairs.push([list[i], list[i + 1]]);
-  }
-  shuffle(pairs, rand);
-
-  const total = flatTypes.length;
-  let k = Math.floor(total * cfg.frozenRatio);
-  k = Math.floor(k / 2) * 2;
-
-  const frozen = [];
-  let count = 0;
-  for (const pair of pairs) {
-    if (count >= k) break;
-    frozen.push(pair[0], pair[1]);
-    count += 2;
-  }
-  return frozen;
-}
-
-// ───────────────────────── 状态机（复刻 game.js）─────────────────────────
-
-function createState(cfg, flatTypes, frozen) {
-  const rows = cfg.rows;
-  const cols = cfg.cols;
-  const grid = [];
-  const frozenGrid = [];
-  for (let r = 0; r <= rows + 1; r++) {
-    grid[r] = [];
-    frozenGrid[r] = [];
-    for (let c = 0; c <= cols + 1; c++) {
-      grid[r][c] = 0;
-      frozenGrid[r][c] = 0;
-    }
-  }
-  const frozenSet = new Set(frozen);
-  for (let idx = 0; idx < flatTypes.length; idx++) {
-    const r = Math.floor(idx / cols) + 1;
-    const c = (idx % cols) + 1;
-    grid[r][c] = flatTypes[idx];
-    if (frozenSet.has(idx)) frozenGrid[r][c] = 1;
-  }
-  return { grid, frozen: frozenGrid, rows, cols, gravity: cfg.gravity || null };
-}
-
-function countCards(st) {
+function cellCount(shapeMap) {
   let n = 0;
-  for (let r = 1; r <= st.rows; r++) {
-    for (let c = 1; c <= st.cols; c++) {
-      if (st.grid[r][c] !== 0) n++;
-    }
-  }
+  for (const row of shapeMap) for (const ch of row) if (ch !== '.') n++;
   return n;
 }
 
-/** 消除一对（复刻 eliminatePair 的账目部分）：普普消 / 普冰破冰保留 / 冰冰双消，随后重力压实 */
-function applyMove(st, p1, p2) {
-  const f1 = st.frozen[p1.r][p1.c] === 1;
-  const f2 = st.frozen[p2.r][p2.c] === 1;
-  const keep1 = f1 && !f2;
-  const keep2 = f2 && !f1;
+function buildSpec(o) {
+  const cn = SHAPE_CN[o.name] || o.name;
+  const sizeTag = o.k === 1 ? '' : (o.k === 2 ? '·大' : '·巨');
+  const zoneTag = o.zoneMode === 'single' ? '' : (o.zoneMode === 'lr' ? '·左右' : '·上下');
+  const cardTag = o.zoneMode === 'single'
+    ? (o.cardSet === 'fruit' ? '·果' : o.cardSet === 'veg' ? '·蔬' : '·混')
+    : '';
+  const iceTag = o.fr === 0 ? '' : (o.fr === 0.2 ? '·薄冰' : '·厚冰');
+  const name = cn + sizeTag + zoneTag + cardTag + iceTag;
 
-  if (!keep1) {
-    st.grid[p1.r][p1.c] = 0;
-    st.frozen[p1.r][p1.c] = 0;
+  let desc;
+  if (o.zoneMode === 'single') {
+    const setCn = o.cardSet === 'fruit' ? '全盘水果' : o.cardSet === 'veg' ? '全盘蔬菜' : '果蔬混合';
+    desc = '形状关：' + setCn + (o.fr > 0 ? ('，含' + (o.fr === 0.2 ? '薄' : '厚') + '冰') : '');
   } else {
-    st.frozen[p1.r][p1.c] = 0; // 破冰保留：只化冰
-  }
-  if (!keep2) {
-    st.grid[p2.r][p2.c] = 0;
-    st.frozen[p2.r][p2.c] = 0;
-  } else {
-    st.frozen[p2.r][p2.c] = 0;
-  }
-  if (st.gravity) compact(st);
-}
-
-/** 重力压实（复刻 game.js applyGravity，frozen 跟随卡片移动） */
-function compact(st) {
-  const dir = st.gravity;
-  const rows = st.rows;
-  const cols = st.cols;
-
-  if (dir === 'down' || dir === 'up') {
-    for (let c = 1; c <= cols; c++) {
-      const stack = [];
-      if (dir === 'down') {
-        for (let r = rows; r >= 1; r--) if (st.grid[r][c]) stack.push(r);
-      } else {
-        for (let r = 1; r <= rows; r++) if (st.grid[r][c]) stack.push(r);
-      }
-      let fill = dir === 'down' ? rows : 1;
-      const step = dir === 'down' ? -1 : 1;
-      for (const from of stack) {
-        if (from !== fill) {
-          st.grid[fill][c] = st.grid[from][c];
-          st.grid[from][c] = 0;
-          st.frozen[fill][c] = st.frozen[from][c];
-          st.frozen[from][c] = 0;
-        }
-        fill += step;
-      }
-    }
-  } else {
-    for (let r = 1; r <= rows; r++) {
-      const stack = [];
-      if (dir === 'left') {
-        for (let c = 1; c <= cols; c++) if (st.grid[r][c]) stack.push(c);
-      } else {
-        for (let c = cols; c >= 1; c--) if (st.grid[r][c]) stack.push(c);
-      }
-      let fillC = dir === 'left' ? 1 : cols;
-      const stepC = dir === 'left' ? 1 : -1;
-      for (const from of stack) {
-        if (from !== fillC) {
-          st.grid[r][fillC] = st.grid[r][from];
-          st.grid[r][from] = 0;
-          st.frozen[r][fillC] = st.frozen[r][from];
-          st.frozen[r][from] = 0;
-        }
-        fillC += stepC;
-      }
-    }
-  }
-}
-
-/** 边界卡：四个邻居中有一个是空的或越界（容易连通的卡） */
-function isBoundary(st, r, c) {
-  return (
-    r - 1 < 1 || st.grid[r - 1][c] === 0 ||
-    r + 1 > st.rows || st.grid[r + 1][c] === 0 ||
-    c - 1 < 1 || st.grid[r][c - 1] === 0 ||
-    c + 1 > st.cols || st.grid[r][c + 1] === 0
-  );
-}
-
-/** 找出全部可连接的同类型配对，返回 [{p1:{r,c}, p2:{r,c}, phase, boundary}] */
-function findPairs(st) {
-  const byType = {};
-  for (let r = 1; r <= st.rows; r++) {
-    for (let c = 1; c <= st.cols; c++) {
-      const t = st.grid[r][c];
-      if (t !== 0) (byType[t] = byType[t] || []).push({ r, c });
-    }
-  }
-  const pairs = [];
-  for (const t in byType) {
-    const list = byType[t];
-    if (list.length < 2) continue;
-    for (let a = 0; a < list.length; a++) {
-      for (let b = a + 1; b < list.length; b++) {
-        const p1 = list[a];
-        const p2 = list[b];
-        if (!PathChecker.canConnect(st.grid, st.rows, st.cols, p1.r, p1.c, p2.r, p2.c)) continue;
-        const f1 = st.frozen[p1.r][p1.c] === 1;
-        const f2 = st.frozen[p2.r][p2.c] === 1;
-        // phase：0=冰冰，1=普冰，2=普普（与 test_logic 的策略一致，优先消冰）
-        const phase = f1 && f2 ? 0 : (f1 || f2 ? 1 : 2);
-        const bd = (isBoundary(st, p1.r, p1.c) ? 1 : 0) + (isBoundary(st, p2.r, p2.c) ? 1 : 0);
-        pairs.push({ p1, p2, phase, bd });
-      }
-    }
-  }
-  return pairs;
-}
-
-function stateKey(st) {
-  let s = '';
-  for (let r = 1; r <= st.rows; r++) {
-    for (let c = 1; c <= st.cols; c++) s += st.grid[r][c] + ',' + st.frozen[r][c] + ';';
-  }
-  return s;
-}
-
-function cloneState(st) {
-  const grid = st.grid.map(row => row.slice());
-  const frozen = st.frozen.map(row => row.slice());
-  return { grid, frozen, rows: st.rows, cols: st.cols, gravity: st.gravity };
-}
-
-// ───────────────────────── 求解器 ─────────────────────────
-
-/**
- * 找一个能清空棋盘的消除顺序。
- * 策略：先随机化贪心（偏好边界配对，冰冻关优先冰冰/普冰），多次尝试；
- * 贪心失败后用带记忆的有限 DFS 兜底。
- */
-function solveLevel(cfg, flatTypes, frozen, rand, opts) {
-  opts = opts || {};
-  const hasIce = cfg.frozenRatio > 0;
-  const greedyAttempts = opts.greedyAttempts || 40;
-  const dfsBudget = opts.dfsBudget || 400000;
-
-  for (let attempt = 0; attempt < greedyAttempts; attempt++) {
-    const st = createState(cfg, flatTypes, frozen);
-    const moves = [];
-    let guard = 0;
-    let ok = true;
-    while (countCards(st) > 0) {
-      if (++guard > 2000) { ok = false; break; }
-      const pairs = orderPairs(findPairs(st), hasIce, rand);
-      if (!pairs.length) { ok = false; break; }
-      const pick = pairs[Math.floor(rand() * Math.min(3, pairs.length))];
-      applyMove(st, pick.p1, pick.p2);
-      moves.push(pick);
-    }
-    if (ok && countCards(st) === 0) return moves;
+    desc = (o.zoneMode === 'lr' ? '左右分区：左果右蔬' : '上下分区：上果下蔬') +
+           (o.fr > 0 ? ('，含' + (o.fr === 0.2 ? '薄' : '厚') + '冰') : '');
   }
 
-  // DFS 兜底
-  const failed = new Set();
-  const budget = { nodes: 0 };
-  const root = createState(cfg, flatTypes, frozen);
+  // 难度分数（用于平滑排序）：尺寸 + 双区 + 冰 + 混合 + 棋盘规模
+  const score = o.k
+    + (o.zoneMode !== 'single' ? 1 : 0)
+    + (o.fr * 2)
+    + (o.cardSet === 'mixed' ? 1 : 0)
+    + Math.floor(o.cells / 300);
+  const difficulty = Math.min(5, Math.max(1, 1 + Math.floor(score / 2)));
 
-  function dfs(st, depth) {
-    if (countCards(st) === 0) return [];
-    budget.nodes++;
-    if (budget.nodes > dfsBudget) return null;
-    const key = stateKey(st);
-    if (failed.has(key)) return null;
-    const pairs = orderPairs(findPairs(st), hasIce, rand);
-    if (!pairs.length) {
-      failed.add(key);
-      return null;
-    }
-    const maxBranch = Math.min(5, pairs.length);
-    for (let i = 0; i < maxBranch; i++) {
-      const next = cloneState(st);
-      applyMove(next, pairs[i].p1, pairs[i].p2);
-      const res = dfs(next, depth + 1);
-      if (res) return [pairs[i], ...res];
-    }
-    failed.add(key);
-    return null;
-  }
+  const lv = {
+    name: name, desc: desc, difficulty: difficulty,
+    rows: o.sz.rows, cols: o.sz.cols, fruitTypeCount: 12,
+    gravity: null, frozenRatio: o.fr,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+    cardSets: o.cardSets,
+    shapeMap: o.scaled,
+    zonePools: o.zonePools,
+  };
+  if (o.isViewport) { lv.viewport = true; lv.cardSize = 46; }
+  else { lv.viewport = false; lv.zoomable = true; }
 
-  return dfs(root, 0);
+  return { score: score, name: o.name, lv: lv };
 }
 
-/** 候选排序：先种子洗牌保证随机性，再按 相位(冰优先) → 边界 稳定排序 */
-function orderPairs(pairs, hasIce, rand) {
-  shuffle(pairs, rand);
-  pairs.sort((a, b) => {
-    if (hasIce && a.phase !== b.phase) return a.phase - b.phase;
-    if (a.bd !== b.bd) return b.bd - a.bd;
-    return 0;
-  });
-  return pairs;
-}
+// ── 枚举组合 ──
+const names = shapeNames().filter(n => !EXCLUDE.has(n));
+const pool = [];
 
-// ───────────────────────── 主流程 ─────────────────────────
+for (const name of names) {
+  const base = SHAPES[name];
+  for (let k = 1; k <= 3; k++) {
+    const scaled = scaleShape(base, k);
+    const sz = shapeSize(scaled);
+    const cells = cellCount(scaled);
+    if (cells > MAX_CELLS) continue;
+    const isViewport = cells > 400;
 
-function main() {
-  const statsMode = process.argv.includes('--stats');
-  const limitArg = process.argv.indexOf('--limit');
-  const limit = limitArg > -1 ? parseInt(process.argv[limitArg + 1], 10) : 0;
-  const LEVELS = GameGlobal.LEVELS;
-  const layouts = {};
-  const total = limit > 0 ? Math.min(limit, LEVELS.length) : LEVELS.length;
-  let solved = 0;
-  const t0 = Date.now();
-
-  for (let li = 0; li < total; li++) {
-    const cfg = LEVELS[li];
-    let result = null;
-    let seedUsed = null;
-
-    for (let seedTry = 0; seedTry < 400; seedTry++) {
-      const seed = cfg.id * 100000 + seedTry;
-      const rand = mulberry32(seed);
-      const flatTypes = genFlatTypes(cfg, rand);
-      const frozen = pickFrozen(cfg, flatTypes, rand);
-      result = solveLevel(cfg, flatTypes, frozen, rand);
-      if (result) {
-        seedUsed = seed;
-        layouts[cfg.id] = { g: flatTypes, f: frozen };
-        break;
+    // 单区：三种卡组 × 三冰档
+    for (const cardSet of ['fruit', 'veg', 'mixed']) {
+      for (const fr of FROZEN) {
+        const zonePools = cardSet === 'mixed'
+          ? { 0: MIXED.slice() }
+          : (cardSet === 'fruit' ? { 0: FRUIT.slice() } : { 0: VEG.slice() });
+        const cardSets = cardSet === 'mixed' ? ['fruit', 'veg'] : [cardSet];
+        pool.push(buildSpec({ name, scaled, sz, cells, isViewport, k, zoneMode: 'single', cardSet, fr, zonePools, cardSets }));
       }
     }
 
-    if (result) {
-      solved++;
-      process.stdout.write(`第${cfg.id}关 完成 seed=${seedUsed} 卡片=${cfg.rows * cfg.cols} 重力=${cfg.gravity || '无'} 冰=${cfg.frozenRatio}\n`);
-    } else {
-      process.stdout.write(`第${cfg.id}关 未找到可解布局！（400 个种子均失败）\n`);
+    // 双区（左右 / 上下）：固定 左果右蔬 / 上果下蔬，仅当切分后两区都够大（避免退化成单区）
+    for (const mode of ['lr', 'tb']) {
+      const split = mode === 'lr' ? splitLR(scaled) : splitTB(scaled);
+      const zc = countZones(split);
+      if ((zc['B'] || 0) < 4) continue;
+      const sc = cellCount(split);
+      for (const fr of FROZEN) {
+        pool.push(buildSpec({
+          name, scaled: split, sz: shapeSize(split), cells: sc, isViewport, k,
+          zoneMode: mode, cardSet: null, fr,
+          zonePools: { 0: FRUIT.slice(), 1: VEG.slice() }, cardSets: ['fruit', 'veg'],
+        }));
+      }
     }
   }
-
-  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  process.stdout.write(`\n可解率：${solved}/${total}（耗时 ${elapsed}s）\n`);
-
-  if (solved < total) {
-    process.exitCode = 1;
-    return;
-  }
-  if (statsMode) return;
-
-  // 输出 js/levels.js
-  const outPath = path.join(__dirname, '..', 'js', 'levels.js');
-  const lines = [];
-  lines.push('/**');
-  lines.push(' * levels.js —— 固定关卡数据（由 tools/gen_levels.js 生成，勿手改）');
-  lines.push(' * 每关：g = 行优先水果类型数组（1..12），f = 冰冻卡片下标数组（frozenRatio>0 时存在）');
-  lines.push(' */');
-  lines.push('GameGlobal.LEVEL_LAYOUTS = {');
-  const ids = Object.keys(layouts).map(Number).sort((a, b) => a - b);
-  for (const id of ids) {
-    const l = layouts[id];
-    const gStr = l.g.join(',');
-    let line = `  ${id}: { g: [${gStr}]`;
-    if (l.f && l.f.length) line += `, f: [${l.f.join(',')}]`;
-    line += ' },';
-    lines.push(line);
-  }
-  lines.push('};');
-  lines.push('');
-  lines.push("if (typeof module !== 'undefined' && module.exports) { module.exports = GameGlobal.LEVEL_LAYOUTS; }");
-  fs.writeFileSync(outPath, lines.join('\n') + '\n', 'utf8');
-  const bytes = fs.statSync(outPath).size;
-  process.stdout.write(`已写入 ${outPath}（${(bytes / 1024).toFixed(1)} KB）\n`);
 }
 
-if (require.main === module) {
-  main();
-}
+// ── 难度平滑排序，再分配 id（27 起）──
+pool.sort((a, b) => (a.score - b.score) || a.name.localeCompare(b.name));
+let id = 27;
+const levels = pool.map(s => { const lv = s.lv; lv.id = id++; return lv; });
 
-module.exports = {
-  mulberry32,
-  shuffle,
-  genFlatTypes,
-  pickFrozen,
-  createState,
-  applyMove,
-  compact,
-  findPairs,
-  isBoundary,
-  orderPairs,
-  solveLevel,
-  main,
-};
+// ── 输出 js/levels_injected.js ──
+const lines = [];
+lines.push('// 自动生成，勿手改 —— 由 tools/gen_levels.js 产出（形状棋盘批量注水关卡）');
+lines.push('// 共 ' + levels.length + ' 关，id 从 27 起，按难度平滑递进。');
+lines.push('GameGlobal.INJECTED_LEVELS = [');
+for (const lv of levels) {
+  const shapeRows = lv.shapeMap.map(r => "      '" + r + "'").join(',\n');
+  lines.push('  {');
+  lines.push("    id: " + lv.id + ", name: '" + lv.name + "', desc: '" + lv.desc + "', difficulty: " + lv.difficulty + ",");
+  lines.push("    rows: " + lv.rows + ", cols: " + lv.cols + ", fruitTypeCount: 12,");
+  lines.push("    gravity: null, frozenRatio: " + lv.frozenRatio + ",");
+  lines.push("    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,");
+  lines.push("    cardSets: " + JSON.stringify(lv.cardSets) + ",");
+  lines.push("    " + (lv.viewport ? "viewport: true, cardSize: 46" : "viewport: false, zoomable: true") + ",");
+  lines.push("    shapeMap: [");
+  lines.push(shapeRows);
+  lines.push("    ],");
+  lines.push("    zonePools: " + JSON.stringify(lv.zonePools) + ",");
+  lines.push("  },");
+}
+lines.push('];');
+lines.push("if (typeof module !== 'undefined' && module.exports) module.exports = GameGlobal.INJECTED_LEVELS;");
+
+const target = path.join(__dirname, '..', 'js', 'levels_injected.js');
+fs.writeFileSync(target, lines.join('\n'), 'utf8');
+
+// ── 统计 ──
+const stat = { single: 0, double: 0, frozen: 0, viewport: 0, big: 0 };
+for (const lv of levels) {
+  if (lv.zonePools[1]) stat.double++; else stat.single++;
+  if (lv.frozenRatio > 0) stat.frozen++;
+  if (lv.viewport) stat.viewport++;
+  if (cellCount(lv.shapeMap) > 400) stat.big++;
+}
+console.log('生成 ' + levels.length + ' 关 → ' + target);
+console.log('总关卡数（含 1~26）= ' + (levels.length + 26));
+console.log('统计：单区=' + stat.single + ' 双区(左右/上下)=' + stat.double +
+  ' 含冰=' + stat.frozen + ' 大地图(viewport)=' + stat.viewport + ' 大棋盘(>400格)=' + stat.big);

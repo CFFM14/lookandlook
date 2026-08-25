@@ -57,6 +57,18 @@ function cloneGrid(g) {
   return ng;
 }
 
+// 剩余卡片是否「全是孤卡」（每种类型仅剩 ≤1 张）。
+// 游戏内 singleton 机制会在结算前自动消除这些孤卡，因此应当判胜而非「卡死」。
+function allSingletons(grid, zoneMap, rows, cols) {
+  const cnt = {};
+  for (let r = 1; r <= rows; r++) for (let c = 1; c <= cols; c++) {
+    const t = grid[r][c];
+    if (t) cnt[t] = (cnt[t] || 0) + 1;
+  }
+  for (const k in cnt) if (cnt[k] >= 2) return false;
+  return true;
+}
+
 // 在 (grid 副本, zoneMap) 上自动求解；返回 {win, moves, reshuffles}
 function autoSolve(g, opts) {
   const rows = g.rows, cols = g.cols;
@@ -119,6 +131,8 @@ function autoSolve(g, opts) {
     if (moves >= moveCap) return { win: false, moves, reshuffles, reason: 'move cap' };
     let mv = findAnyMove();
     if (!mv) {
+      // 剩余全是孤卡（每种仅剩 1 张）→ 游戏内 singleton 机制自动消除，判胜（避免奇数格关误判卡死）
+      if (allSingletons(grid, zoneMap, rows, cols)) return { win: true, moves, reshuffles };
       if (reshuffles >= reshuffleCap) return { win: false, moves, reshuffles, reason: 'stuck+reshuffle cap' };
       reshuffle();
       continue;
@@ -150,6 +164,39 @@ for (const lv of levels) {
       '（重排=模拟玩家用「打乱」自救的次数，越少越好）');
   }
 }
+
+// ── 注水关抽验（形状批量生成，千关级，抽样验证可解性）──
+(function sampleInjected() {
+  const all = (GameGlobal.INJECTED_LEVELS || []);
+  if (!all.length) return;
+  const STEP = 41; // 约每 41 关切一个，覆盖各难度
+  const sampleIds = new Set();
+  all.forEach((lv, i) => { if (i % STEP === 0) sampleIds.add(lv.id); });
+  // 强制包含大地图代表（>800 格）与厚冰代表，确保极端关也能通关（各限量 4 个，控时）
+  const bigRep = [], iceRep = [];
+  all.forEach((lv) => {
+    const cells = lv.shapeMap.reduce((s, r) => s + r.replace(/\./g, '').length, 0);
+    if (cells > 800) bigRep.push(lv.id);
+    if (lv.frozenRatio >= 0.3) iceRep.push(lv.id);
+  });
+  bigRep.slice(0, 4).forEach((id) => sampleIds.add(id));
+  iceRep.slice(0, 4).forEach((id) => sampleIds.add(id));
+
+  const ids = [...sampleIds].sort((a, b) => a - b);
+  console.log('\n[注水关抽样] 抽验 ' + ids.length + ' 关（共 ' + all.length + ' 注水关，总关 ' + GameGlobal.TOTAL_LEVELS + '）');
+  let fail = 0, totalMoves = 0, totalReshuffle = 0, wins = 0;
+  for (const lv of ids) {
+    const g = new GameGlobal.Game(lv);
+    const res = autoSolve(g, { moveCap: 6000, reshuffleCap: 300 });
+    if (res.win) { wins++; totalMoves += res.moves; totalReshuffle += res.reshuffles; }
+    else { fail++; console.error('  ✗ 关 ' + lv + ' 未通关: ' + JSON.stringify(res)); }
+  }
+  if (wins) {
+    console.log('    抽样平均步数=' + (totalMoves / wins).toFixed(0) +
+      '，平均重排=' + (totalReshuffle / wins).toFixed(1));
+  }
+  check(fail === 0, '注水关抽样全部可通关（抽验 ' + ids.length + ' 关，失败 ' + fail + '）');
+})();
 
 console.log('');
 if (errors) { console.log('自动通关测试存在失败 (' + errors + ' 项)'); process.exitCode = 1; }
