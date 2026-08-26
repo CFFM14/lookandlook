@@ -36,8 +36,7 @@
       { "type": "folder", "value": "tools" },
       { "type": "folder", "value": ".workbuddy" },
       { "type": "suffix", "value": ".wav" },
-      { "type": "suffix", "value": ".png" },
-      { "type": "suffix", "value": ".jpg" },
+      { "type": "suffix", "value": ".webp" },
       { "type": "suffix", "value": ".md" },
       { "type": "suffix", "value": ".py" }
     ],
