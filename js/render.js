@@ -23,6 +23,7 @@
     _boardCacheCtx: null,
     boardCacheValid: false,
     _boardCacheDisabled: false,
+    _cacheCamKey: null,   // 缓存对应的相机状态(cx,cy,scale)；镜头变化时需重建缓存
 
     init: function (ctx) {
       this.ctx = ctx;
@@ -306,12 +307,17 @@
     },
 
     /** 标记缓存失效：棋盘内容变化（选关/选卡/打乱/铺冰/消除后）时调用 */
-    invalidateBoardCache: function () { this.boardCacheValid = false; },
+    invalidateBoardCache: function () { this.boardCacheValid = false; this._cacheCamKey = null; },
 
-    /** 棋盘是否处于静止态（可安全复用缓存）：无处理中、无连线、无瞬时卡片动画 */
+    /** 棋盘是否处于静止态（可安全复用缓存）：无处理中、无连线、无瞬时卡片动画、镜头未变动 */
     _isBoardStatic: function (game) {
-      if (game.isProcessing || game.connectionLine) return false;
+      if (game._introOn || game.isProcessing || game.connectionLine) return false;
       if (this._anyTransientAnim(game)) return false;
+      // 镜头关：相机未稳定（入场镜头播放中已在上面拦截；此处处理用户平移/缩放导致 cam 变化）则视为非静态
+      if (game.cam) {
+        var k = game.cam.cx + ',' + game.cam.cy + ',' + game.cam.scale;
+        if (k !== this._cacheCamKey) return false;
+      }
       return true;
     },
 
@@ -810,22 +816,25 @@
 
       // （顶部信息栏改到棋盘之后绘制，见下方，确保 HUD 始终压在卡片上方）
 
-      // ── 棋盘区（地板 + 卡片 + 连线 + 棋盘粒子）统一在镜头变换内 ──
-      ctx.save();
-      if (game.cam) {
-        var sc = game._boardScreenCenter();
-        ctx.translate(sc.x, sc.y);
-        ctx.scale(game.cam.scale, game.cam.scale);
-        ctx.translate(-game.cam.cx, -game.cam.cy);
-      }
-      // 形状地板 + 特殊格底色（仅形状棋盘关）
-      // 离屏缓存：棋盘静止时直接贴缓存（1 次 drawImage 替代全量重绘）；动画/变化帧才重绘，
-      // 且只在“本帧已静止”时把棋盘烘焙进缓存，避免动画帧反复重建造成双倍开销
+      // ── 棋盘区（地板 + 卡片）──
+      // 关键：离屏缓存烘焙时 drawCard/drawBoardFloor 已通过 logicToPixel 把镜头(cam)变换烤进图像，
+      // 因此【贴缓存时不能再套镜头变换】。只有走全量重绘（动画/镜头变化帧）时才在镜头变换内绘制。
+      // 连线与粒子始终在镜头变换内（它们用棋盘坐标，需当前 cam 实时定位）。
       var staticNow = this._isBoardStatic(game);
       var useCache = !this._boardCacheDisabled && this.boardCacheValid && staticNow;
+
       if (useCache) {
+        // 缓存已含镜头变换，直接按设计坐标(0,0)贴图，不套 cam
         ctx.drawImage(this._boardCache, 0, 0);
       } else {
+        // 全量重绘：在镜头变换内绘制（无 cam 的关变换为恒等）
+        ctx.save();
+        if (game.cam) {
+          var sc = game._boardScreenCenter();
+          ctx.translate(sc.x, sc.y);
+          ctx.scale(game.cam.scale, game.cam.scale);
+          ctx.translate(-game.cam.cx, -game.cam.cy);
+        }
         if (game.hasShape) this.drawBoardFloor(game);
         // 卡片（先画，连线需要覆盖在卡片上方）
         for (var r = 1; r <= game.rows; r++) {
@@ -837,17 +846,27 @@
           }
         }
         if (staticNow && !this._boardCacheDisabled) {
-          // 本帧已静止且缓存失效：烘焙一次供后续帧复用
+          // 本帧已静止且缓存失效：烘焙一次（含当前镜头）供后续帧复用
           this.renderBoardToCache(game, now);
           this.boardCacheValid = true;
         } else {
-          // 动画进行中：缓存已过时，标记失效（不重建，等动画结束再烘焙）
+          // 动画 / 镜头变化中：缓存已过时，标记失效（不重建，等静止后再烘焙）
           this.boardCacheValid = false;
         }
+        // 记录当前镜头状态，供 _isBoardStatic 判断镜头是否变动
+        this._cacheCamKey = game.cam ? (game.cam.cx + ',' + game.cam.cy + ',' + game.cam.scale) : '';
+        ctx.restore();
       }
-      // 连线（消除金线 / 提示蓝线，画在卡片上层）
+
+      // 连线（消除金线 / 提示蓝线，画在卡片上层）与棋盘粒子：始终在镜头变换内
+      ctx.save();
+      if (game.cam) {
+        var sc2 = game._boardScreenCenter();
+        ctx.translate(sc2.x, sc2.y);
+        ctx.scale(game.cam.scale, game.cam.scale);
+        ctx.translate(-game.cam.cx, -game.cam.cy);
+      }
       this.drawConnectionLine(game.connectionLine);
-      // 棋盘粒子（随镜头）
       this.drawParticles('board');
       ctx.restore();
 
