@@ -6,6 +6,7 @@
   'use strict';
 
   var KEY_UNLOCK = 'look_unlocked';
+  var KEY_UNLOCK_SPECIAL = 'look_unlocked_special';
   var KEY_BEST_PREFIX = 'look_best_';
   var KEY_SOUND = 'look_sound';
   var KEY_COINS = 'look_coins';
@@ -37,6 +38,27 @@
       var unlocked = this.getUnlockedLevels();
       if (currentLevel >= unlocked && currentLevel < GameGlobal.TOTAL_LEVELS) {
         wx.setStorageSync(KEY_UNLOCK, String(currentLevel + 1));
+      }
+    },
+
+    /** 读取已解锁的特殊关卡数（至少 1，最多 TOTAL_SPECIAL）；与普通过独立存档 */
+    getUnlockedSpecial: function () {
+      if (UNLOCK_ALL_FOR_TEST) return GameGlobal.TOTAL_SPECIAL; // 测试期：全解锁
+      try {
+        var raw = wx.getStorageSync(KEY_UNLOCK_SPECIAL);
+        var val = raw ? parseInt(raw, 10) : 1;
+        if (isNaN(val)) val = 1;
+        return Math.max(1, Math.min(val, GameGlobal.TOTAL_SPECIAL));
+      } catch (e) {
+        return 1;
+      }
+    },
+
+    /** 通关特殊关后解锁下一个特殊关（顺序解锁） */
+    unlockNextSpecial: function (currentLevel) {
+      var unlocked = this.getUnlockedSpecial();
+      if (currentLevel >= unlocked && currentLevel < GameGlobal.TOTAL_SPECIAL) {
+        wx.setStorageSync(KEY_UNLOCK_SPECIAL, String(currentLevel + 1));
       }
     },
 

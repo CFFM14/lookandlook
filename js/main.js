@@ -109,6 +109,13 @@
     levelPageFrom: 0,      // 动画起始页
     levelPageTo: 0,        // 动画目标页
     levelPageDir: 1,       // 翻页方向：1 下一页 / -1 上一页
+    // 特殊关卡选关分页状态（复用选关 UI，独立命名空间）
+    levelCategory: 'normal', // 当前选关类别：'normal'（普通）| 'special'（特殊关卡）
+    specialPage: 0,
+    specialPageAnim: 0,
+    specialPageFrom: 0,
+    specialPageTo: 0,
+    specialPageDir: 1,
     _levelDragging: false, // 选关界面水平拖拽中
     _levelDragX: 0,        // 拖拽累计偏移（设计坐标）
     _touchStart: null,
@@ -264,8 +271,11 @@
             self._levelDragging = true;
           }
           if (self._levelDragging) {
-            // 动画中禁止拖拽（等动画结束）
-            if (!(self.levelPageAnim > 0 && self.levelPageAnim < 1)) {
+            // 动画中禁止拖拽（等动画结束；特殊关用 specialPageAnim）
+            var animBusy = (self.levelCategory === 'special')
+              ? (self.specialPageAnim > 0 && self.specialPageAnim < 1)
+              : (self.levelPageAnim > 0 && self.levelPageAnim < 1);
+            if (!animBusy) {
               self._levelDragX = dx;
             }
           } else {
@@ -286,14 +296,15 @@
         // 棋盘拖拽/捏合过 → 本次不算点击
         if (self._boardPanned) { self._boardPanned = false; return; }
 
-        // 选关界面：水平拖拽结束 → 判定翻页
-        if (self.page === 'levels' && self._levelDragging) {
+        // 选关 / 特殊关界面：水平拖拽结束 → 判定翻页
+        if ((self.page === 'levels' || self.page === 'specials') && self._levelDragging) {
           var dragX = self._levelDragX;
           self._levelDragging = false;
           // 拖满 60 设计像素才翻页，否则平滑回弹到原页
           if (Math.abs(dragX) > 60) {
             self._levelDragX = 0;
-            GameGlobal.UI.onAction(dragX < 0 ? 'levels_next' : 'levels_prev');
+            var isSp = self.levelCategory === 'special';
+            GameGlobal.UI.onAction(dragX < 0 ? (isSp ? 'specials_next' : 'levels_next') : (isSp ? 'specials_prev' : 'levels_prev'));
           } else if (dragX !== 0) {
             GameGlobal.Tween.to(self, { _levelDragX: 0 }, 180, 'easeOut');
           }
@@ -379,7 +390,10 @@
       // 守卫：胜利回调延迟弹出，若玩家已离开游戏页（返回/切关）则忽略
       if (this.page !== 'game') return;
       this.helpPopupOpen = false; // 通关时关闭玩法说明弹窗，避免覆盖结算面板
-      this.winData = { levelId: levelId, moves: moves, elapsed: elapsed, coinsEarned: coinsEarned || 0 };
+      this.winData = {
+        levelId: levelId, moves: moves, elapsed: elapsed, coinsEarned: coinsEarned || 0,
+        category: (this.game && this.game.cfg && this.game.cfg._category) || 'normal',
+      };
       this.winShownAt = Date.now();
       this.page = 'win';
     },
@@ -416,6 +430,7 @@
       switch (this.page) {
         case 'menu': r.renderMenu(); break;
         case 'levels': r.renderLevelSelect(); break;
+        case 'specials': r.renderLevelSelect(); break;
         case 'shop': r.renderShop(); break;
         case 'game': r.renderGame(); break;
         case 'win': r.renderWin(); break;

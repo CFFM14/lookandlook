@@ -557,6 +557,14 @@
         { id: 'menu_levels', fontSize: 24, gradient: ['#FFF3D6', '#FFE9A8'],
           border: '#E8B34B', textColor: '#8B5A2B', radius: 18 });
 
+      // ── 特殊关卡（固定在选择关卡正下方，不浮动）──
+      var spW = 240, spH = 60;
+      var spX = cx - spW / 2;
+      var spY = lvY + lvH + 16;
+      this.drawTextButton(spX, spY, spW, spH, '特殊关卡',
+        { id: 'menu_special', fontSize: 24, gradient: ['#FFE0C2', '#FFC59A'],
+          border: '#D98A4B', textColor: '#8B4A2B', radius: 18 });
+
       // ── 音效键（左上角小圆按钮，与右上角金币同高） ──
       var soundOn = Main.soundOn;
       this.drawTextButton(16, (36 + safeTop) - 23, 46, 46,
@@ -629,24 +637,28 @@
       return { cardW: cardW, cardH: cardH, gap: gap, rowGap: rowGap, startX: startX, startY: startY, cols: 2, rows: 5 };
     },
 
-    /** 绘制一页关卡（offX 为整页水平偏移，翻页动画 / 拖拽预览用） */
-    drawLevelPage: function (pageIdx, offX, unlocked) {
+    /** 绘制一页关卡（offX 为整页水平偏移，翻页动画 / 拖拽预览用）
+     *  arr / total / cardPrefix 由 renderLevelSelect 按「普通 / 特殊」类别传入，复用同一套绘制逻辑 */
+    drawLevelPage: function (pageIdx, offX, unlocked, arr, total, cardPrefix) {
       var perPage = GameGlobal.LEVELS_PER_PAGE;
       var m = this.getLevelPageMetrics();
       var cardW = m.cardW, cardH = m.cardH, gap = m.gap, rowGap = m.rowGap;
       var startX = m.startX, startY = m.startY;
       var begin = pageIdx * perPage;
-      var end = Math.min(begin + perPage, GameGlobal.TOTAL_LEVELS);
+      var end = Math.min(begin + perPage, total);
 
       for (var i = begin; i < end; i++) {
-        var lv = GameGlobal.LEVELS[i];
+        var lv = arr[i];
         var idxInPage = i - begin;
         var col = idxInPage % 2, row = Math.floor(idxInPage / 2);
         var x = startX + col * (cardW + gap) + offX;
         var y = startY + row * (cardH + rowGap);
-        var locked = lv.id > unlocked;
+        // 普通关：id 连续，lv.id > unlocked 表示未解锁；特殊关：id 为 50001+，用下标判定
+        var locked = (cardPrefix === 'sp_')
+          ? (GameGlobal.getSpecialIndex(lv.id) >= unlocked)
+          : (lv.id > unlocked);
 
-        var id = 'lv_' + lv.id;
+        var id = cardPrefix + lv.id;
         Main.buttonBounds.push({ id: id, x: x, y: y, w: cardW, h: cardH });
         var pressed = Main.buttonPressed(id);
 
@@ -688,66 +700,78 @@
       }
     },
 
-    /** 关卡选择（分页翻页式：每页 10 关，左右按钮 / 滑动切换，带动画与页码指示器） */
+    /** 关卡选择 / 特殊关卡选择（同一套分页 UI，按 Main.levelCategory 切换数组与解锁数据） */
     renderLevelSelect: function () {
       this.drawBackground('bg_menu');
       var cx = GameGlobal.DESIGN_W / 2;
       var W = GameGlobal.DESIGN_W;
-      var unlocked = GameGlobal.Storage.getUnlockedLevels();
+      var isSpecial = Main.levelCategory === 'special';
+      var arr = isSpecial ? GameGlobal.SPECIAL_LEVELS : GameGlobal.LEVELS;
+      var total = isSpecial ? GameGlobal.TOTAL_SPECIAL : GameGlobal.TOTAL_LEVELS;
+      var unlocked = isSpecial ? GameGlobal.Storage.getUnlockedSpecial() : GameGlobal.Storage.getUnlockedLevels();
       var perPage = GameGlobal.LEVELS_PER_PAGE;
-      var totalPages = Math.ceil(GameGlobal.TOTAL_LEVELS / perPage);
+      var totalPages = Math.ceil(total / perPage);
       var safeTop = GameGlobal.SAFE_TOP || 0;
 
-      this.drawText('选择关卡', cx, 70 + safeTop, 30, '#8B5A2B', 'center', true);
-      this.drawTextButton(20, 44 + safeTop, 70, 40, '返回', { id: 'levels_back', fontSize: 16 });
+      this.drawText(isSpecial ? '特殊关卡' : '选择关卡', cx, 70 + safeTop, 30, '#8B5A2B', 'center', true);
+      this.drawTextButton(20, 44 + safeTop, 70, 40, '返回', { id: isSpecial ? 'specials_back' : 'levels_back', fontSize: 16 });
 
       // 页码收敛到合法范围
-      if (Main.levelPage > totalPages - 1) Main.levelPage = totalPages - 1;
-      if (Main.levelPage < 0) Main.levelPage = 0;
+      if (isSpecial) {
+        if (Main.specialPage > totalPages - 1) Main.specialPage = totalPages - 1;
+        if (Main.specialPage < 0) Main.specialPage = 0;
+      } else {
+        if (Main.levelPage > totalPages - 1) Main.levelPage = totalPages - 1;
+        if (Main.levelPage < 0) Main.levelPage = 0;
+      }
 
-      var anim = Main.levelPageAnim;
+      var page = isSpecial ? Main.specialPage : Main.levelPage;
+      var anim = isSpecial ? Main.specialPageAnim : Main.levelPageAnim;
+      var from = isSpecial ? Main.specialPageFrom : Main.levelPageFrom;
+      var to = isSpecial ? Main.specialPageTo : Main.levelPageTo;
+      var dir = isSpecial ? Main.specialPageDir : Main.levelPageDir;
       var inAnim = anim > 0 && anim < 1;
       var ctx = this.ctx;
+      var cardPrefix = isSpecial ? 'sp_' : 'lv_';
 
       // 页面内容：动画中同时绘制新旧两页（位移 + 淡入淡出）；静止时绘制当前页（含拖拽偏移）
       if (inAnim) {
-        var dir = Main.levelPageDir;
         ctx.save();
         ctx.globalAlpha = 1 - anim;
-        this.drawLevelPage(Main.levelPageFrom, -dir * anim * W, unlocked);
+        this.drawLevelPage(from, -dir * anim * W, unlocked, arr, total, cardPrefix);
         ctx.restore();
         ctx.save();
         ctx.globalAlpha = anim;
-        this.drawLevelPage(Main.levelPageTo, dir * (1 - anim) * W, unlocked);
+        this.drawLevelPage(to, dir * (1 - anim) * W, unlocked, arr, total, cardPrefix);
         ctx.restore();
       } else {
         var dragOff = Main._levelDragging ? Main._levelDragX : 0;
-        this.drawLevelPage(Main.levelPage, dragOff, unlocked);
+        this.drawLevelPage(page, dragOff, unlocked, arr, total, cardPrefix);
       }
 
-      // 左右翻页按钮（动画中 / 边界页置灰）—— 与控制区其他元素垂直错开，互不遮挡
+      // 左右翻页按钮（动画中 / 边界页置灰）
       var animBusy = inAnim;
-      var prevDisabled = Main.levelPage <= 0;
-      var nextDisabled = Main.levelPage >= totalPages - 1;
+      var prevDisabled = page <= 0;
+      var nextDisabled = page >= totalPages - 1;
       this.drawTextButton(28, 758, 54, 44, '◀', {
-        id: 'levels_prev', fontSize: 20,
+        id: isSpecial ? 'specials_prev' : 'levels_prev', fontSize: 20,
         bg: (prevDisabled || animBusy) ? 'rgba(205,195,175,0.85)' : '#FFE9A8',
         border: '#B0A080', textColor: '#8B5A2B',
       });
       this.drawTextButton(W - 28 - 54, 758, 54, 44, '▶', {
-        id: 'levels_next', fontSize: 20,
+        id: isSpecial ? 'specials_next' : 'levels_next', fontSize: 20,
         bg: (nextDisabled || animBusy) ? 'rgba(205,195,175,0.85)' : '#FFE9A8',
         border: '#B0A080', textColor: '#8B5A2B',
       });
 
-      // 页码指示器（当前页 / 总页数）—— 独立一行，位于翻页按钮下方
+      // 页码指示器（当前页 / 总页数）
       this.roundRectPath(cx - 70, 812, 140, 30, 15);
       ctx.fillStyle = 'rgba(255,246,224,0.9)';
       ctx.fill();
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = '#E8B34B';
       ctx.stroke();
-      this.drawText((Main.levelPage + 1) + ' / ' + totalPages, cx, 827, 15, '#8B5A2B', 'center', true);
+      this.drawText((page + 1) + ' / ' + totalPages, cx, 827, 15, '#8B5A2B', 'center', true);
     },
 
     /** 商店 */
@@ -1015,7 +1039,10 @@
       // ── 关卡名 + 金币奖励 ──
       var winData = Main.winData;
       var lvCfg = GameGlobal.getLevelConfig(winData.levelId);
-      this.drawTextFit('第' + winData.levelId + '关 · ' + lvCfg.name, cx, py + 114, panelW - 50, 20, '#8B5A2B', 'center', true);
+      var titleText = (winData.category === 'special')
+        ? ('特殊关卡 · ' + lvCfg.name)
+        : ('第' + winData.levelId + '关 · ' + lvCfg.name);
+      this.drawTextFit(titleText, cx, py + 114, panelW - 50, 20, '#8B5A2B', 'center', true);
       // 金币奖励（金色高亮）
       var coinsEarned = winData.coinsEarned || 0;
       var isFirstClearText = coinsEarned >= GameGlobal.COINS_FIRST_CLEAR;
@@ -1078,7 +1105,14 @@
       }
 
       // ── 按钮 ──
-      var hasNext = winData.levelId < GameGlobal.TOTAL_LEVELS;
+      // 下一关：普通关 = id+1；特殊关 = 同数组下一个（顺序解锁）
+      var hasNext;
+      if (winData.category === 'special') {
+        var sidx = GameGlobal.getSpecialIndex(winData.levelId);
+        hasNext = sidx >= 0 && sidx < GameGlobal.SPECIAL_LEVELS.length - 1;
+      } else {
+        hasNext = winData.levelId < GameGlobal.TOTAL_LEVELS;
+      }
       var btnW = panelW - 60;
       var bx = cx - btnW / 2;
       if (hasNext) {

@@ -16,6 +16,7 @@
     /** 显示关卡选择（默认回到“正在解锁”的那一页 = 下一关所在页） */
     showLevelSelect: function () {
       Main.page = 'levels';
+      Main.levelCategory = 'normal';
       Main.game = null;
       // 进入选关界面时，定位到当前解锁进度的那一页，而不是停留在上次手动翻到的页
       var perPage = GameGlobal.LEVELS_PER_PAGE;
@@ -28,18 +29,47 @@
       Main.levelPageAnim = 0; // 清掉残留翻页动画，避免回到主页再进来时画面错位
     },
 
+    /** 显示特殊关卡选择（复用选关 UI，独立命名空间与解锁进度） */
+    showSpecialSelect: function () {
+      Main.page = 'specials';
+      Main.levelCategory = 'special';
+      Main.game = null;
+      var perPage = GameGlobal.LEVELS_PER_PAGE;
+      var unlocked = GameGlobal.Storage.getUnlockedSpecial();
+      var totalPages = Math.ceil(GameGlobal.TOTAL_SPECIAL / perPage);
+      // 特殊关 id 从 50001 起、连续，unlocked 是数量 → 末关下标 unlocked-1，所在页定位到那一页
+      var frontierPage = Math.floor((unlocked - 1) / perPage);
+      if (frontierPage > totalPages - 1) frontierPage = totalPages - 1;
+      if (frontierPage < 0) frontierPage = 0;
+      Main.specialPage = frontierPage;
+      Main.specialPageAnim = 0;
+    },
+
     /** 显示商店 */
     showShop: function () {
       Main.page = 'shop';
       Main.game = null;
     },
 
-    /** 进入某关 */
+    /** 进入某关（普通 / 特殊 共用；按配置 _category 自动判定解锁与“返回”去向） */
     startLevel: function (levelId) {
-      var unlocked = GameGlobal.Storage.getUnlockedLevels();
-      if (levelId > unlocked) {
-        Main.showToast('请先通关前面的关卡');
-        return;
+      var cfg = GameGlobal.getLevelConfig(levelId);
+      var category = (cfg && cfg._category) || 'normal';
+      if (category === 'special') {
+        var sidx = GameGlobal.getSpecialIndex(levelId);
+        var unlockedSp = GameGlobal.Storage.getUnlockedSpecial();
+        if (sidx < 0 || sidx >= unlockedSp) {
+          Main.showToast('请先通关前面的特殊关卡');
+          return;
+        }
+        Main.gameFrom = 'special'; // 特殊关进入 → 游戏内“返回”回特殊关卡列表
+      } else {
+        var unlocked = GameGlobal.Storage.getUnlockedLevels();
+        if (levelId > unlocked) {
+          Main.showToast('请先通关前面的关卡');
+          return;
+        }
+        // gameFrom 由调用方设置（menu_start→'menu'，选关卡片→'levels'），此处不再覆盖
       }
       Main.game = new GameGlobal.Game(levelId);
       Main.page = 'game';
@@ -59,25 +89,43 @@
       }
     },
 
-    /** 选关界面翻页：dir = 1 下一页 / -1 上一页（带动画） */
+    /** 选关 / 特殊关翻页：dir = 1 下一页 / -1 上一页（带动画，按 Main.levelCategory 切换命名空间） */
     flipLevelPage: function (dir) {
       var M = Main;
-      if (M.page !== 'levels') return;
+      var isSpecial = M.levelCategory === 'special';
+      if ((isSpecial && M.page !== 'specials') || (!isSpecial && M.page !== 'levels')) return;
       // 动画进行中忽略连点，避免页面状态错乱
-      if (M.levelPageAnim > 0 && M.levelPageAnim < 1) return;
+      if (isSpecial) {
+        if (M.specialPageAnim > 0 && M.specialPageAnim < 1) return;
+      } else {
+        if (M.levelPageAnim > 0 && M.levelPageAnim < 1) return;
+      }
       var perPage = GameGlobal.LEVELS_PER_PAGE;
-      var totalPages = Math.ceil(GameGlobal.TOTAL_LEVELS / perPage);
-      var target = M.levelPage + dir;
+      var total = isSpecial ? GameGlobal.TOTAL_SPECIAL : GameGlobal.TOTAL_LEVELS;
+      var totalPages = Math.ceil(total / perPage);
+      var cur = isSpecial ? M.specialPage : M.levelPage;
+      var target = cur + dir;
       if (target < 0 || target >= totalPages) return; // 边界页不响应
 
-      M.levelPageFrom = M.levelPage;
-      M.levelPageTo = target;
-      M.levelPageDir = dir;
-      M.levelPageAnim = 0.0001; // 触发动画
-      GameGlobal.Tween.to(M, { levelPageAnim: 1 }, 300, 'easeInOut', function () {
-        M.levelPage = M.levelPageTo;
-        M.levelPageAnim = 0;
-      });
+      if (isSpecial) {
+        M.specialPageFrom = cur;
+        M.specialPageTo = target;
+        M.specialPageDir = dir;
+        M.specialPageAnim = 0.0001; // 触发动画
+        GameGlobal.Tween.to(M, { specialPageAnim: 1 }, 300, 'easeInOut', function () {
+          M.specialPage = M.specialPageTo;
+          M.specialPageAnim = 0;
+        });
+      } else {
+        M.levelPageFrom = cur;
+        M.levelPageTo = target;
+        M.levelPageDir = dir;
+        M.levelPageAnim = 0.0001; // 触发动画
+        GameGlobal.Tween.to(M, { levelPageAnim: 1 }, 300, 'easeInOut', function () {
+          M.levelPage = M.levelPageTo;
+          M.levelPageAnim = 0;
+        });
+      }
     },
 
     /** 购买商品（id 以 buy_ 开头） */
@@ -112,6 +160,9 @@
         case 'menu_levels':
           UI.showLevelSelect();
           break;
+        case 'menu_special':
+          UI.showSpecialSelect();
+          break;
         case 'menu_shop':
           UI.showShop();
           break;
@@ -129,6 +180,15 @@
         case 'levels_next':
           UI.flipLevelPage(1);
           break;
+        case 'specials_back':
+          UI.showMenu();
+          break;
+        case 'specials_prev':
+          UI.flipLevelPage(-1);
+          break;
+        case 'specials_next':
+          UI.flipLevelPage(1);
+          break;
         case 'shop_back':
           UI.showMenu();
           break;
@@ -137,6 +197,7 @@
           Main.helpPopupOpen = false; // 离开关卡时关闭玩法说明弹窗
           Main.pendingHelp = false;   // 一并清理：中途离场则不弹待弹说明
           if (Main.gameFrom === 'menu') UI.showMenu();
+          else if (Main.gameFrom === 'special') UI.showSpecialSelect();
           else UI.showLevelSelect();
           break;
         case 'win_home':
@@ -148,11 +209,21 @@
           break;
         case 'win_next':
           if (Main.winData) {
-            var next = Main.winData.levelId + 1;
-            if (next <= GameGlobal.TOTAL_LEVELS) {
-              UI.startLevel(next);
+            if (Main.winData.category === 'special') {
+              // 特殊关：顺序解锁，下一关 = 同数组下一个
+              var sidx = GameGlobal.getSpecialIndex(Main.winData.levelId);
+              if (sidx >= 0 && sidx < GameGlobal.SPECIAL_LEVELS.length - 1) {
+                UI.startLevel(GameGlobal.SPECIAL_LEVELS[sidx + 1].id);
+              } else {
+                UI.showMenu();
+              }
             } else {
-              UI.showMenu();
+              var next = Main.winData.levelId + 1;
+              if (next <= GameGlobal.TOTAL_LEVELS) {
+                UI.startLevel(next);
+              } else {
+                UI.showMenu();
+              }
             }
           }
           break;
@@ -170,11 +241,11 @@
             UI.buyItem(id);
             break;
           }
-          // 关卡选择
-          if (id.indexOf('lv_') === 0) {
+          // 关卡选择（普通 lv_ / 特殊 sp_ 共用；startLevel 按 _category 决定 gameFrom 与解锁）
+          if (id.indexOf('lv_') === 0 || id.indexOf('sp_') === 0) {
             var lv = parseInt(id.substring(3), 10);
             if (!isNaN(lv)) {
-              Main.gameFrom = 'levels'; // 选关界面进入 → 游戏内"返回"回选关界面
+              Main.gameFrom = (id.indexOf('sp_') === 0) ? 'special' : 'levels';
               UI.startLevel(lv);
             }
             break;

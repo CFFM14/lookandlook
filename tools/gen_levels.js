@@ -98,8 +98,11 @@ function buildSpec(o) {
 }
 
 // ── 枚举组合 ──
+// 拆分：普通关只含 k=1,2（写 levels_injected.js）；巨物关 k=3 单独写 special_levels.js（特殊关卡玩法）。
+// 普通关去掉 k=3 后数量不足 1000，但「普通 + 特殊」合计仍 ≥ 1000（满足导师要求的总关卡数）。
 const names = shapeNames().filter(n => !EXCLUDE.has(n));
-const pool = [];
+const normalPool = [];   // k=1,2 → 普通注水关
+const specialPool = [];  // k=3   → 特殊关卡（巨物）
 
 for (const name of names) {
   const base = SHAPES[name];
@@ -109,6 +112,7 @@ for (const name of names) {
     const cells = cellCount(scaled);
     if (cells > MAX_CELLS) continue;
     const isViewport = cells > 400;
+    const target = (k === 3) ? specialPool : normalPool; // k=3 = 特殊关，其余 = 普通关
 
     // 单区：三种卡组 × 三冰档
     for (const cardSet of ['fruit', 'veg', 'mixed']) {
@@ -117,7 +121,7 @@ for (const name of names) {
           ? { 0: MIXED.slice() }
           : (cardSet === 'fruit' ? { 0: FRUIT.slice() } : { 0: VEG.slice() });
         const cardSets = cardSet === 'mixed' ? ['fruit', 'veg'] : [cardSet];
-        pool.push(buildSpec({ name, scaled, sz, cells, isViewport, k, zoneMode: 'single', cardSet, fr, zonePools, cardSets }));
+        target.push(buildSpec({ name, scaled, sz, cells, isViewport, k, zoneMode: 'single', cardSet, fr, zonePools, cardSets }));
       }
     }
 
@@ -128,7 +132,7 @@ for (const name of names) {
       if ((zc['B'] || 0) < 4) continue;
       const sc = cellCount(split);
       for (const fr of FROZEN) {
-        pool.push(buildSpec({
+        target.push(buildSpec({
           name, scaled: split, sz: shapeSize(split), cells: sc, isViewport, k,
           zoneMode: mode, cardSet: null, fr,
           zonePools: { 0: FRUIT.slice(), 1: VEG.slice() }, cardSets: ['fruit', 'veg'],
@@ -138,39 +142,72 @@ for (const name of names) {
   }
 }
 
-// ── 难度平滑排序，再分配 id（27 起）──
-pool.sort((a, b) => (a.score - b.score) || a.name.localeCompare(b.name));
+// ── 难度平滑排序，再分配 id ──
+// 普通关：id 从 27 起；特殊关（巨物）：id 从 50001 起（与普通过独立命名空间，存档 key 不串）。
+normalPool.sort((a, b) => (a.score - b.score) || a.name.localeCompare(b.name));
+specialPool.sort((a, b) => (a.score - b.score) || a.name.localeCompare(b.name));
 let id = 27;
-const levels = pool.map(s => { const lv = s.lv; lv.id = id++; return lv; });
+const normalLevels = normalPool.map(s => { const lv = s.lv; lv.id = id++; return lv; });
+let sid = 50001;
+const specialLevels = specialPool.map(s => { const lv = s.lv; lv.id = sid++; return lv; });
 
-// ── 输出 js/levels_injected.js ──
-const lines = [];
-lines.push('// 自动生成，勿手改 —— 由 tools/gen_levels.js 产出（形状棋盘批量注水关卡）');
-lines.push('// 共 ' + levels.length + ' 关，id 从 27 起，按难度平滑递进。');
-lines.push('GameGlobal.INJECTED_LEVELS = [');
-for (const lv of levels) {
-  lines.push('  {');
-  lines.push("    id: " + lv.id + ", name: '" + lv.name + "', difficulty: " + lv.difficulty + ",");
-  lines.push("    frozenRatio: " + lv.frozenRatio + ",");
-  lines.push("    shapeKey: '" + lv.shapeKey + "', k: " + lv.k + ", zoneMode: '" + lv.zoneMode + "', cardSet: " + (lv.cardSet ? "'" + lv.cardSet + "'" : 'null') + ",");
-  lines.push("  },");
+// ── 输出 js/levels_injected.js（普通注水关，k=1,2）──
+function emitInjected(target, levels, fileLabel) {
+  const lines = [];
+  lines.push('// 自动生成，勿手改 —— 由 tools/gen_levels.js 产出（普通注水关，k=1/2）');
+  lines.push('// 共 ' + levels.length + ' 关，id 从 27 起，按难度平滑递进。');
+  lines.push('GameGlobal.INJECTED_LEVELS = [');
+  for (const lv of levels) {
+    lines.push('  {');
+    lines.push("    id: " + lv.id + ", name: '" + lv.name + "', difficulty: " + lv.difficulty + ",");
+    lines.push("    frozenRatio: " + lv.frozenRatio + ",");
+    lines.push("    shapeKey: '" + lv.shapeKey + "', k: " + lv.k + ", zoneMode: '" + lv.zoneMode + "', cardSet: " + (lv.cardSet ? "'" + lv.cardSet + "'" : 'null') + ",");
+    lines.push("  },");
+  }
+  lines.push('];');
+  lines.push("if (typeof module !== 'undefined' && module.exports) module.exports = GameGlobal.INJECTED_LEVELS;");
+  fs.writeFileSync(target, lines.join('\n'), 'utf8');
+  return target;
 }
-lines.push('];');
-lines.push("if (typeof module !== 'undefined' && module.exports) module.exports = GameGlobal.INJECTED_LEVELS;");
+// ── 输出 js/special_levels.js（特殊关卡，k=3 巨物）──
+function emitSpecial(target, levels, fileLabel) {
+  const lines = [];
+  lines.push('// 自动生成，勿手改 —— 由 tools/gen_levels.js 产出（特殊关卡：巨物关 k=3）');
+  lines.push('// 共 ' + levels.length + ' 关，id 从 50001 起（与普通过独立命名空间）。');
+  lines.push('// 想新增特殊关卡：在此数组追加一条（引用版：shapeKey/k/zoneMode/cardSet，运行时由 config.js 的 expandShapeRef 展开），');
+  lines.push('// 或把更多 k 档/维度交给 gen_levels.js 重跑生成。顺序解锁：通关一个才解锁下一个。');
+  lines.push('GameGlobal.SPECIAL_LEVELS = [');
+  for (const lv of levels) {
+    lines.push('  {');
+    lines.push("    id: " + lv.id + ", name: '" + lv.name + "', difficulty: " + lv.difficulty + ",");
+    lines.push("    frozenRatio: " + lv.frozenRatio + ",");
+    lines.push("    shapeKey: '" + lv.shapeKey + "', k: " + lv.k + ", zoneMode: '" + lv.zoneMode + "', cardSet: " + (lv.cardSet ? "'" + lv.cardSet + "'" : 'null') + ",");
+    lines.push("  },");
+  }
+  lines.push('];');
+  lines.push("if (typeof module !== 'undefined' && module.exports) module.exports = GameGlobal.SPECIAL_LEVELS;");
+  fs.writeFileSync(target, lines.join('\n'), 'utf8');
+  return target;
+}
 
-const target = path.join(__dirname, '..', 'js', 'levels_injected.js');
-fs.writeFileSync(target, lines.join('\n'), 'utf8');
+const injTarget = emitInjected(path.join(__dirname, '..', 'js', 'levels_injected.js'), normalLevels);
+const spTarget = emitSpecial(path.join(__dirname, '..', 'js', 'special_levels.js'), specialLevels);
 
 // ── 统计（用形状库重新推导，不依赖已删除的存储字段）──
-const stat = { single: 0, double: 0, frozen: 0, viewport: 0, big: 0 };
-for (const lv of levels) {
-  if (lv.zoneMode !== 'single') stat.double++; else stat.single++;
-  if (lv.frozenRatio > 0) stat.frozen++;
-  let s = scaleShape(SHAPES[lv.shapeKey], lv.k);
-  if (lv.zoneMode === 'lr') s = splitLR(s); else if (lv.zoneMode === 'tb') s = splitTB(s);
-  if (cellCount(s) > 400) { stat.viewport++; stat.big++; }
+function statOf(levels) {
+  const s = { single: 0, double: 0, frozen: 0, viewport: 0, big: 0 };
+  for (const lv of levels) {
+    if (lv.zoneMode !== 'single') s.double++; else s.single++;
+    if (lv.frozenRatio > 0) s.frozen++;
+    let sh = scaleShape(SHAPES[lv.shapeKey], lv.k);
+    if (lv.zoneMode === 'lr') sh = splitLR(sh); else if (lv.zoneMode === 'tb') sh = splitTB(sh);
+    if (cellCount(sh) > 400) { s.viewport++; s.big++; }
+  }
+  return s;
 }
-console.log('生成 ' + levels.length + ' 关 → ' + target);
-console.log('总关卡数（含 1~26）= ' + (levels.length + 26));
-console.log('统计：单区=' + stat.single + ' 双区(左右/上下)=' + stat.double +
-  ' 含冰=' + stat.frozen + ' 大地图(viewport)=' + stat.viewport + ' 大棋盘(>400格)=' + stat.big);
+const stN = statOf(normalLevels), stS = statOf(specialLevels);
+console.log('普通注水关 ' + normalLevels.length + ' 关 → ' + injTarget);
+console.log('  统计：单区=' + stN.single + ' 双区=' + stN.double + ' 含冰=' + stN.frozen + ' 大地图=' + stN.viewport);
+console.log('特殊关卡(巨物) ' + specialLevels.length + ' 关 → ' + spTarget);
+console.log('  统计：单区=' + stS.single + ' 双区=' + stS.double + ' 含冰=' + stS.frozen + ' 大地图=' + stS.viewport);
+console.log('总关卡数（含 1~26 手调）= ' + (normalLevels.length + 26 + specialLevels.length));

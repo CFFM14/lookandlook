@@ -122,6 +122,9 @@ GameGlobal.ZONE_NAMES = ['左区', '右区', '中区', '四区', '五区', '六�
 GameGlobal.LEVELS = (function () {
   // 注入自动生成的批量注水关卡（形状棋盘），由 tools/gen_levels.js 产出（id 从 27 起）
   require('./levels_injected.js');
+  // 特殊关卡（巨物关 k=3），由 tools/gen_levels.js 产出到 special_levels.js（id 从 50001 起，独立命名空间）
+  require('./special_levels.js');
+  GameGlobal.SPECIAL_LEVELS = GameGlobal.SPECIAL_LEVELS || [];
   var HANDBOOK = [
     {
       // 第1关【水果初识】：经典连连看入门，无重力、无冰冻，12 种水果（10×8 棋盘），点两张相同水果连线消除
@@ -431,22 +434,46 @@ GameGlobal.LEVELS = (function () {
 })();
 
 GameGlobal.TOTAL_LEVELS = GameGlobal.LEVELS.length;
+GameGlobal.TOTAL_SPECIAL = GameGlobal.SPECIAL_LEVELS.length;
 
 /** 选关界面每页显示的关卡数（2 列 × 5 行 = 10 关/页，17 关 → 2 页） */
 GameGlobal.LEVELS_PER_PAGE = 10;
 
-/** 根据关卡编号获取配置 */
+/** 根据关卡编号获取配置（先查普通关，再查特殊关；命中后打 _category 标记供解锁/返回判断） */
 GameGlobal.getLevelConfig = function (id) {
-  for (var i = 0; i < GameGlobal.LEVELS.length; i++) {
+  var i, c;
+  for (i = 0; i < GameGlobal.LEVELS.length; i++) {
     if (GameGlobal.LEVELS[i].id === id) {
-      var c = GameGlobal.LEVELS[i];
+      c = GameGlobal.LEVELS[i];
+      c._category = 'normal';
       if (typeof GameGlobal.expandShapeRef === 'function') GameGlobal.expandShapeRef(c);
       return c;
     }
   }
+  if (GameGlobal.SPECIAL_LEVELS) {
+    for (i = 0; i < GameGlobal.SPECIAL_LEVELS.length; i++) {
+      if (GameGlobal.SPECIAL_LEVELS[i].id === id) {
+        c = GameGlobal.SPECIAL_LEVELS[i];
+        c._category = 'special';
+        if (typeof GameGlobal.expandShapeRef === 'function') GameGlobal.expandShapeRef(c);
+        return c;
+      }
+    }
+  }
+  // 兜底：返回普通第 1 关
   var first = GameGlobal.LEVELS[0];
+  first._category = 'normal';
   if (typeof GameGlobal.expandShapeRef === 'function') GameGlobal.expandShapeRef(first);
   return first;
+};
+
+/** 取特殊关数组中某 id 的下标（用于「下一关」导航），找不到返回 -1 */
+GameGlobal.getSpecialIndex = function (id) {
+  if (!GameGlobal.SPECIAL_LEVELS) return -1;
+  for (var i = 0; i < GameGlobal.SPECIAL_LEVELS.length; i++) {
+    if (GameGlobal.SPECIAL_LEVELS[i].id === id) return i;
+  }
+  return -1;
 };
 
 /**

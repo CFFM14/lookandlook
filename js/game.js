@@ -1227,7 +1227,12 @@
     this._won = true;
     GameGlobal.SoundManager.play('win');
     GameGlobal.SoundManager.play('coin');
-    GameGlobal.Storage.unlockNextLevel(this.levelId);
+    // 按关卡类别解锁下一关：普通关走 unlockNextLevel，特殊关走 unlockNextSpecial（顺序解锁）
+    if (this.cfg && this.cfg._category === 'special') {
+      GameGlobal.Storage.unlockNextSpecial(this.levelId);
+    } else {
+      GameGlobal.Storage.unlockNextLevel(this.levelId);
+    }
     GameGlobal.Renderer.spawnWinFireworks();
 
     var elapsed = this.getElapsed();
