@@ -18,6 +18,12 @@
     images: {},
     particles: [],
 
+    // 离屏棋盘缓存（棋盘静止时直接贴图，省去每帧全量重绘大棋盘）
+    _boardCache: null,
+    _boardCacheCtx: null,
+    boardCacheValid: false,
+    _boardCacheDisabled: false,
+
     init: function (ctx) {
       this.ctx = ctx;
     },
@@ -276,6 +282,73 @@
       }
       ctx.stroke();
       ctx.restore();
+    },
+
+    // ══════════════════════════════════════════════
+    //  离屏棋盘缓存（优化大棋盘每帧重绘造成的掉帧）
+    // ══════════════════════════════════════════════
+
+    /** 惰性创建离屏画布（设计坐标系 390×844）。微信下用第二次 createCanvas 拿到的离屏画布；带护栏防误用主屏画布 */
+    _createBoardCache: function () {
+      if (this._boardCache || this._boardCacheDisabled) return;
+      var W = GameGlobal.DESIGN_W, H = GameGlobal.DESIGN_H;
+      var c = null;
+      try {
+        if (typeof wx !== 'undefined' && wx.createCanvas) c = wx.createCanvas();
+        else if (typeof document !== 'undefined') c = document.createElement('canvas');
+      } catch (e) { c = null; }
+      if (!c) { this._boardCacheDisabled = true; return; }
+      // 护栏：若不慎拿到主屏画布，禁用缓存避免画面错乱
+      if (GameGlobal.Main && GameGlobal.Main.canvas === c) { this._boardCacheDisabled = true; return; }
+      c.width = W; c.height = H;
+      this._boardCache = c;
+      this._boardCacheCtx = c.getContext('2d');
+    },
+
+    /** 标记缓存失效：棋盘内容变化（选关/选卡/打乱/铺冰/消除后）时调用 */
+    invalidateBoardCache: function () { this.boardCacheValid = false; },
+
+    /** 棋盘是否处于静止态（可安全复用缓存）：无处理中、无连线、无瞬时卡片动画 */
+    _isBoardStatic: function (game) {
+      if (game.isProcessing || game.connectionLine) return false;
+      if (this._anyTransientAnim(game)) return false;
+      return true;
+    },
+
+    /** 是否存在正在播放的瞬时卡片动画（消除缩放 / 抖动 / 提示闪烁 / 冰壳淡出） */
+    _anyTransientAnim: function (game) {
+      for (var r = 1; r <= game.rows; r++) {
+        for (var c = 1; c <= game.cols; c++) {
+          var card = game.cardNodes[r][c];
+          if (!card || card.state === 'eliminated') continue;
+          var st = card.state;
+          if (st === 'eliminating' || st === 'mismatch' || st === 'hintFlash') return true;
+          var v = card.visual;
+          if (v && v.iceAlpha > 0.01 && v.iceAlpha < 0.99) return true; // 冰壳淡出中
+        }
+      }
+      return false;
+    },
+
+    /** 把当前静态棋盘（地板 + 卡片）烘焙进离屏画布，供后续帧直接贴图 */
+    renderBoardToCache: function (game, now) {
+      this._createBoardCache();
+      if (!this._boardCacheCtx) { this._boardCacheDisabled = true; return; }
+      var cctx = this._boardCacheCtx;
+      cctx.setTransform(1, 0, 0, 1, 0, 0);
+      cctx.clearRect(0, 0, GameGlobal.DESIGN_W, GameGlobal.DESIGN_H);
+      var live = this.ctx;
+      this.ctx = cctx; // drawBoardFloor / drawCard 走离屏 ctx，无需镜头变换
+      if (game.hasShape) this.drawBoardFloor(game);
+      for (var r = 1; r <= game.rows; r++) {
+        for (var c = 1; c <= game.cols; c++) {
+          var card = game.cardNodes[r][c];
+          if (card && card.state !== 'eliminated') {
+            this.drawCard(card, now);
+          }
+        }
+      }
+      this.ctx = live;
     },
 
     // ══════════════════════════════════════════════
@@ -746,14 +819,30 @@
         ctx.translate(-game.cam.cx, -game.cam.cy);
       }
       // 形状地板 + 特殊格底色（仅形状棋盘关）
-      if (game.hasShape) this.drawBoardFloor(game);
-      // 卡片（先画，连线需要覆盖在卡片上方）
-      for (var r = 1; r <= game.rows; r++) {
-        for (var c = 1; c <= game.cols; c++) {
-          var card = game.cardNodes[r][c];
-          if (card && card.state !== 'eliminated') {
-            this.drawCard(card, now);
+      // 离屏缓存：棋盘静止时直接贴缓存（1 次 drawImage 替代全量重绘）；动画/变化帧才重绘，
+      // 且只在“本帧已静止”时把棋盘烘焙进缓存，避免动画帧反复重建造成双倍开销
+      var staticNow = this._isBoardStatic(game);
+      var useCache = !this._boardCacheDisabled && this.boardCacheValid && staticNow;
+      if (useCache) {
+        ctx.drawImage(this._boardCache, 0, 0);
+      } else {
+        if (game.hasShape) this.drawBoardFloor(game);
+        // 卡片（先画，连线需要覆盖在卡片上方）
+        for (var r = 1; r <= game.rows; r++) {
+          for (var c = 1; c <= game.cols; c++) {
+            var card = game.cardNodes[r][c];
+            if (card && card.state !== 'eliminated') {
+              this.drawCard(card, now);
+            }
           }
+        }
+        if (staticNow && !this._boardCacheDisabled) {
+          // 本帧已静止且缓存失效：烘焙一次供后续帧复用
+          this.renderBoardToCache(game, now);
+          this.boardCacheValid = true;
+        } else {
+          // 动画进行中：缓存已过时，标记失效（不重建，等动画结束再烘焙）
+          this.boardCacheValid = false;
         }
       }
       // 连线（消除金线 / 提示蓝线，画在卡片上层）

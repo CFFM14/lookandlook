@@ -88,6 +88,8 @@
     this.generateLayout();
     this.createCards();
     if (this.cfg.frozenRatio > 0) this.applyFrozen(this.cfg.frozenRatio);
+    // 新棋盘：离屏缓存失效，首帧（Main.game 已就位、metrics 正确）重建并烘焙，避免进场全程全量重绘
+    if (GameGlobal.Renderer && GameGlobal.Renderer.invalidateBoardCache) GameGlobal.Renderer.invalidateBoardCache();
   };
 
   // ══════════════════════════════════════════════
@@ -384,6 +386,7 @@
         var fcard = this.cardNodes[fr][fc];
         if (fcard) fcard.visual.iceAlpha = 1;
       }
+      if (GameGlobal.Renderer && GameGlobal.Renderer.invalidateBoardCache) GameGlobal.Renderer.invalidateBoardCache();
       return;
     }
 
@@ -423,6 +426,7 @@
       }
       count += 2;
     }
+    if (GameGlobal.Renderer && GameGlobal.Renderer.invalidateBoardCache) GameGlobal.Renderer.invalidateBoardCache();
   };
 
   Game.prototype.shuffleArray = function (arr) {
@@ -489,6 +493,8 @@
    * 选中 → 弹到 1.18 再回落到 1.08 保持微大；取消 → 回到 1.0
    */
   Game.prototype.highlightCard = function (card, on) {
+    // 选中态会改变卡片缩放，离屏缓存需失效以便重建（含选中放大效果）
+    if (GameGlobal.Renderer && GameGlobal.Renderer.invalidateBoardCache) GameGlobal.Renderer.invalidateBoardCache();
     if (on) {
       GameGlobal.Tween.to(card.visual, { scale: 1.18 }, 80, 'easeOut', function () {
         GameGlobal.Tween.to(card.visual, { scale: 1.08 }, 60, 'easeOut');
@@ -1022,6 +1028,8 @@
       this.selectedCard = null;
     }
     GameGlobal.SoundManager.play('sweep');
+    // 打乱后卡片类型全部重排，离屏缓存失效重建
+    if (GameGlobal.Renderer && GameGlobal.Renderer.invalidateBoardCache) GameGlobal.Renderer.invalidateBoardCache();
   };
 
   // ══════════════════════════════════════════════
