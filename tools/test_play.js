@@ -165,10 +165,10 @@ for (const lv of levels) {
   }
 }
 
-// ── 注水关抽验（形状批量生成，千关级，抽样验证可解性）──
+// ── 特殊关抽验（形状批量生成，千关级，抽样验证可解性）──
 (function sampleInjected() {
-  // 普通注水关 + 特殊关（巨物 k=3）一起抽验（特殊关是最大棋盘，最需验证可解性）
-  const all = (GameGlobal.INJECTED_LEVELS || []).concat(GameGlobal.SPECIAL_LEVELS || []);
+  // 所有特殊关（含 25/26 手调形状关 + gen_levels.js 生成关）一起抽验；巨档(k=3)是最大棋盘，最需验证可解性
+  const all = GameGlobal.SPECIAL_LEVELS || [];
   if (!all.length) return;
   const STEP = 41; // 约每 41 关切一个，覆盖各难度
   const sampleIds = new Set();
@@ -185,8 +185,7 @@ for (const lv of levels) {
   iceRep.slice(0, 4).forEach((id) => sampleIds.add(id));
 
   const ids = [...sampleIds].sort((a, b) => a - b);
-  console.log('\n[注水关抽样] 抽验 ' + ids.length + ' 关（普通注水 ' + (GameGlobal.INJECTED_LEVELS || []).length +
-    ' + 特殊关 ' + (GameGlobal.SPECIAL_LEVELS || []).length + ' = ' + all.length + ' 关）');
+  console.log('\n[特殊关抽样] 抽验 ' + ids.length + ' 关（特殊关共 ' + (GameGlobal.SPECIAL_LEVELS || []).length + ' 关）');
   let fail = 0, totalMoves = 0, totalReshuffle = 0, wins = 0;
   for (const lv of ids) {
     const g = new GameGlobal.Game(lv);

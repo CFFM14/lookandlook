@@ -11,11 +11,11 @@
 GameGlobal.DESIGN_W = 390;
 GameGlobal.DESIGN_H = 844;
 
-// 形状素材库（运行时加载，用于注水关 shapeMap 的按需展开，避免把放大后的字符画写死进 levels_injected.js）
+// 形状素材库（运行时加载，用于特殊关 shapeMap 的按需展开，避免把放大后的字符画写死进 special_levels.js）
 require('./shapes.js');
 
 // 注水关「引用版」（只有 shapeKey/k/zoneMode/cardSet）在运行时展开成完整 shapeMap/zonePools/rows/cols，
-// 用 shapes.js 重建 —— 这样 levels_injected.js 从 ~1.3MB 降到几十 KB。
+// 用 shapes.js 重建 —— 这样 special_levels.js 只存引用版（几十 KB）。
 (function () {
   var FRUIT = ['f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12'];
   var VEG   = ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12'];
@@ -48,7 +48,7 @@ require('./shapes.js');
     } else {
       cfg.zonePools = { 0: FRUIT.slice(), 1: VEG.slice() };
     }
-    // 常量 / 派生字段：不再写死进 levels_injected.js，运行时补全，文件体积极小
+    // 常量 / 派生字段：不再写死进 special_levels.js，运行时补全，文件体积极小
     cfg.fruitTypeCount = 12;
     cfg.gravity = null;
     cfg.hintEnabled = true;
@@ -86,7 +86,7 @@ GameGlobal.FRUIT_NAMES = [
  *   - prefix：card.type 的语义前缀，如 'f' → 'f1'，'v' → 'v1'
  *   - assetPrefix：render.js 拿去 images 字典的键前缀，如 'fruit_' → images['fruit_01']
  *   - names：可选的展示名数组（与 images/veg_01~12.png 一一对应）
- * 1~24 关默认只走 fruit 套，card.type 仍是数字 1~12（零改动）；25/26 关写 cardSets 后切语义串。
+ * 1~24 普通关默认只走 fruit 套，card.type 仍是数字 1~12（零改动）；特殊关（含 25/26）写 cardSets 后切语义串。
  */
 GameGlobal.CARD_SETS = {
   fruit: { prefix: 'f', assetPrefix: 'fruit_', names: GameGlobal.FRUIT_NAMES },
@@ -119,12 +119,75 @@ GameGlobal.ZONE_NAMES = ['左区', '右区', '中区', '四区', '五区', '六�
  * 第 17~20 关为 4 个斜向（对角线）重力演示关「对角坠果」（消除后水果分别滑向 右下/左下/右上/左上 角）。
  * 不再自动生成 17~576 的随机关卡。
  */
+/** 特殊关卡（手调形状演示关）：第 25 关展翅雄鹰、第 26 关心心相印。
+ *  固定排在「特殊关卡」列表最前（id 25/26），后面接 gen_levels.js 生成的注水关（id 从 27 起）。
+ *  _category 由 getLevelConfig 命中时打标；这里只放纯配置。 */
+var SPECIAL_HANDBOOK = [
+  {
+    id: 25,
+    name: '展翅雄鹰',
+    desc: '分区棋盘：左翅12种蔬菜·右翅12种水果·中间混合（全24种上阵）',
+    difficulty: 5,
+    rows: 20, cols: 40, fruitTypeCount: 12,
+    gravity: null, frozenRatio: 0,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+    cardSets: ['fruit', 'veg'],
+    viewport: true, cardSize: 46,
+    shapeMap: [
+      '................CCCCCCCC................',
+      '................CCCCCCCC................',
+      '....AAAAAA......CCCCCCCC......BBBBBB....',
+      '....AAAAAA......CCCCCCCC......BBBBBB....',
+      '..AAAAAAAAAA..CCCCCCCCCCCC..BBBBBBBBBB..',
+      '..AAAAAAAAAA..CCCCCCCCCCCC..BBBBBBBBBB..',
+      'AAAAAAAAAAAAAACCCCCCCCCCCCCCBBBBBBBBBBBB',
+      'AAAAAAAAAAAAAACCCCCCCCCCCCCCBBBBBBBBBBBB',
+      'AAAAAAAAAAAAAACCCCCCCCCCCCCCBBBBBBBBBBBB',
+      'AAAAAAAAAAAAAACCCCCCCCCCCCCCBBBBBBBBBBBB',
+      '..AAAAAAAAAA..CCCCCCCCCCCC..BBBBBBBB....',
+      '..AAAAAAAAAA..CCCCCCCCCCCC..BBBBBBBB....',
+      '....AAAAAAAA..CCCCCCCCCCCC..BBBBBB......',
+      '....AAAAAAAA..CCCCCCCCCCCC..BBBBBB......',
+      '......AAAAAA....CCCCCCCC....BBBBBB......',
+      '......AAAAAA....CCCCCCCC....BBBBBB......',
+      '................CCCCCCCC................',
+      '................CCCCCCCC................',
+      '................CC....CC................',
+      '................CC....CC................',
+    ],
+    zonePools: {
+      0: ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12'],
+      1: ['f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12'],
+      2: ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12','f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12'],
+    },
+  },
+  {
+    id: 26,
+    name: '心心相印',
+    desc: '心形棋盘：全盘蔬菜主题',
+    difficulty: 4,
+    rows: 10, cols: 11, fruitTypeCount: 12,
+    gravity: null, frozenRatio: 0,
+    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
+    cardSets: ['veg'],
+    viewport: false, zoomable: true,
+    shapeMap: [
+      '.AA.AAA.AA.',
+      'AAAAAAAAAAA',
+      'AAAAAAAAAAA',
+      'AAAAAAAAAAA',
+      '.AAAAAAAAA.',
+      '..AAAAAAA..',
+      '...AAAAA...',
+      '....AAA....',
+      '.....A.....',
+      '.....A.....',
+    ],
+    zonePools: { 0: ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12'] },
+  },
+];
+
 GameGlobal.LEVELS = (function () {
-  // 注入自动生成的批量注水关卡（形状棋盘），由 tools/gen_levels.js 产出（id 从 27 起）
-  require('./levels_injected.js');
-  // 特殊关卡（巨物关 k=3），由 tools/gen_levels.js 产出到 special_levels.js（id 从 50001 起，独立命名空间）
-  require('./special_levels.js');
-  GameGlobal.SPECIAL_LEVELS = GameGlobal.SPECIAL_LEVELS || [];
   var HANDBOOK = [
     {
       // 第1关【水果初识】：经典连连看入门，无重力、无冰冻，12 种水果（10×8 棋盘），点两张相同水果连线消除
@@ -350,90 +413,13 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
 
-  // ── 新玩法关：形状棋盘 / 分区 / 镜头 ──────────────
-  // shapeMap 字符画：'.'=镂空(无格子)  A~H=分区 0~7 的普通格
-  // zonePools：每个分区独立的水果池（不同分区的水果默认不能互消）
-  levels.push({
-    // 第25关【展翅雄鹰】：鹰形棋盘（20×40 大地图，由基础鹰形放大 2 倍，支持拖拽平移/缩放），
-    // 左翅=蔬菜区(全部12种) / 右翅=水果区(全部12种) / 躯干=混合区(蔬菜+水果共24种)，默认只能同区消除。
-    // 本关把所有 12 种蔬菜 + 12 种水果全用上（分区布局保证每种至少一对，不会漏用）。
-    // 分区视觉皮：左翅用蔬菜卡组，右翅用水果卡组（题材对比更直观）：
-    //   v = 蔬菜（茄子/南瓜/.../白菜）  f = 水果（柚子/.../香蕉）
-    id: 25,
-    name: '展翅雄鹰',
-    desc: '分区棋盘：左翅12种蔬菜·右翅12种水果·中间混合（全24种上阵）',
-    difficulty: 5,
-    rows: 20, cols: 40, fruitTypeCount: 12,
-    gravity: null, frozenRatio: 0,
-    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
-    cardSets: ['fruit', 'veg'], // 启用多卡组：card.type 改为 'f<n>'/'v<n>'
-    viewport: true, cardSize: 46,
-    shapeMap: [
-      '................CCCCCCCC................',
-      '................CCCCCCCC................',
-      '....AAAAAA......CCCCCCCC......BBBBBB....',
-      '....AAAAAA......CCCCCCCC......BBBBBB....',
-      '..AAAAAAAAAA..CCCCCCCCCCCC..BBBBBBBBBB..',
-      '..AAAAAAAAAA..CCCCCCCCCCCC..BBBBBBBBBB..',
-      'AAAAAAAAAAAAAACCCCCCCCCCCCCCBBBBBBBBBBBB',
-      'AAAAAAAAAAAAAACCCCCCCCCCCCCCBBBBBBBBBBBB',
-      'AAAAAAAAAAAAAACCCCCCCCCCCCCCBBBBBBBBBBBB',
-      'AAAAAAAAAAAAAACCCCCCCCCCCCCCBBBBBBBBBBBB',
-      '..AAAAAAAAAA..CCCCCCCCCCCC..BBBBBBBB....',
-      '..AAAAAAAAAA..CCCCCCCCCCCC..BBBBBBBB....',
-      '....AAAAAAAA..CCCCCCCCCCCC..BBBBBB......',
-      '....AAAAAAAA..CCCCCCCCCCCC..BBBBBB......',
-      '......AAAAAA....CCCCCCCC....BBBBBB......',
-      '......AAAAAA....CCCCCCCC....BBBBBB......',
-      '................CCCCCCCC................',
-      '................CCCCCCCC................',
-      '................CC....CC................',
-      '................CC....CC................',
-    ],
-    zonePools: {
-      0: ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12'], // 左翅 = 全部 12 种蔬菜
-      1: ['f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12'], // 右翅 = 全部 12 种水果
-      2: ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12','f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12'], // 躯干 = 蔬菜+水果 24 种混合
-    },
-  });
-  levels.push({
-    // 第26关【心心相印】：心形镂空棋盘（10×11，单分区），
-    // 体验形状棋盘 + 分区边框主题 + 全盘蔬菜卡组。
-    id: 26,
-    name: '心心相印',
-    desc: '心形棋盘：全盘蔬菜主题',
-    difficulty: 4,
-    rows: 10, cols: 11, fruitTypeCount: 12,
-    gravity: null, frozenRatio: 0,
-    hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
-    cardSets: ['veg'], // 启用多卡组（仅蔬菜）：card.type = 'v<n>'
-    viewport: false, zoomable: true, // 心形恰好入屏；但仍允许双指捏合缩放 / 单指平移细看
-    shapeMap: [
-      '.AA.AAA.AA.',
-      'AAAAAAAAAAA',
-      'AAAAAAAAAAA',
-      'AAAAAAAAAAA',
-      '.AAAAAAAAA.',
-      '..AAAAAAA..',
-      '...AAAAA...',
-      '....AAA....',
-      '.....A.....',
-      '.....A.....',
-    ],
-    zonePools: { 0: ['v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12'] },
-  });
-
-  // ── 注入注水关卡（tools/gen_levels.js 自动生成，id 从 27 起）──
-  if (GameGlobal.INJECTED_LEVELS && GameGlobal.INJECTED_LEVELS.length) {
-    for (var zi = 0; zi < GameGlobal.INJECTED_LEVELS.length; zi++) {
-      levels.push(GameGlobal.INJECTED_LEVELS[zi]);
-    }
-  }
-
   return levels;
 })();
 
 GameGlobal.TOTAL_LEVELS = GameGlobal.LEVELS.length;
+// 特殊关卡：25/26 手调形状关 在前，gen_levels.js 生成的注水关（id 从 27 起）在后，统一顺序解锁
+require('./special_levels.js');
+GameGlobal.SPECIAL_LEVELS = SPECIAL_HANDBOOK.concat(GameGlobal.SPECIAL_LEVELS || []);
 GameGlobal.TOTAL_SPECIAL = GameGlobal.SPECIAL_LEVELS.length;
 
 /** 选关界面每页显示的关卡数（2 列 × 5 行 = 10 关/页，17 关 → 2 页） */

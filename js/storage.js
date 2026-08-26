@@ -56,9 +56,12 @@
 
     /** 通关特殊关后解锁下一个特殊关（顺序解锁） */
     unlockNextSpecial: function (currentLevel) {
-      var unlocked = this.getUnlockedSpecial();
-      if (currentLevel >= unlocked && currentLevel < GameGlobal.TOTAL_SPECIAL) {
-        wx.setStorageSync(KEY_UNLOCK_SPECIAL, String(currentLevel + 1));
+      var idx = GameGlobal.getSpecialIndex(currentLevel);
+      if (idx < 0) return; // 不是特殊关，忽略
+      var unlocked = this.getUnlockedSpecial(); // 已解锁数量（1-based）
+      // 只有通关当前最前沿（idx === unlocked-1）才解锁下一关；用下标而非 id 比较，避免 id 非 1 序时错设
+      if (idx === unlocked - 1 && unlocked < GameGlobal.TOTAL_SPECIAL) {
+        wx.setStorageSync(KEY_UNLOCK_SPECIAL, String(unlocked + 1));
       }
     },
 
