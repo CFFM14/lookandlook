@@ -39,10 +39,11 @@ chars.forEach(function (c) {
 if (missing.length) console.log('  MISSING FONT:', missing.join(''));
 
 console.log('— 缩放助手自检 —');
+var proto = G.shapeSize(G.SHAPES.star);
 var big = G.scaleShape(G.SHAPES.star, 2);
 var sz = G.shapeSize(big);
-console.log('  star ×2 →', sz.rows + '×' + sz.cols, (sz.rows === 18 && sz.cols === 22) ? '✓' : '✗');
-if (!(sz.rows === 18 && sz.cols === 22)) bad++;
+console.log('  star ×2 →', sz.rows + '×' + sz.cols, (sz.rows === 2 * proto.rows && sz.cols === 2 * proto.cols) ? '✓' : '✗');
+if (!(sz.rows === 2 * proto.rows && sz.cols === 2 * proto.cols)) bad++;
 
 console.log('— 统计 —');
 console.log('  图案总数:', G.shapeNames().length, ' 字体字符:', chars.length, ' 校验格子:', cellChecked);

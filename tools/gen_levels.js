@@ -29,7 +29,7 @@ const scaleShape = G.scaleShape;
 const shapeSize = G.shapeSize;
 const shapeNames = G.shapeNames;
 
-const MAX_CELLS = 1100;          // 放大后总格数上限（超出则跳过该尺寸，避免真机卡顿）
+const MAX_CELLS = 2100;          // 放大后总格数上限（15 列原型 k=3 放大为 45x45=2025 格，保留「巨」档以保 1000+ 关；真机若「巨」档明显卡顿再收紧）
 const EXCLUDE = new Set(['eagle']); // 雄鹰作为第 25 关独家，不进入注水池
 const FROZEN = [0, 0.2, 0.3];
 
