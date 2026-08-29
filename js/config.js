@@ -499,6 +499,20 @@ GameGlobal.getStackIndex = function (id) {
 };
 
 /**
+ * 关卡“展示序号”：每个大类（普通/特殊/层层消消）独立从 1 开始计数，
+ * 不沿用全局 id（普通 1~24、特殊 25~1151、层层消消 2001+）。
+ * 普通关 id 即序号，原样返回；特殊关返回其在 SPECIAL_LEVELS 中的下标+1；
+ * 层层消消返回其在 STACK_LEVELS 中的下标+1。
+ */
+GameGlobal.getLevelDisplayNumber = function (id) {
+  var cfg = GameGlobal.getLevelConfig(id);
+  if (!cfg) return id;
+  if (cfg._category === 'stack') return GameGlobal.getStackIndex(id) + 1;
+  if (cfg._category === 'special') return GameGlobal.getSpecialIndex(id) + 1;
+  return id; // normal：id 即序号
+};
+
+/**
  * 生成某关的“玩法说明”文本（多行），供游戏内问号弹窗展示。
  * 清楚告诉玩家：重力往哪个方向坠（左/右/上/下/斜向），有没有冰冻，共几种水果。
  * @returns {string[]} 第一行是标题，其余为说明行
@@ -506,7 +520,7 @@ GameGlobal.getStackIndex = function (id) {
 GameGlobal.getLevelHelp = function (cfg) {
   cfg = cfg || {};
   var lines = [];
-  lines.push('第' + (cfg.id || '?') + '关 · ' + (cfg.name || ''));
+  lines.push('第' + GameGlobal.getLevelDisplayNumber(cfg.id) + '关 · ' + (cfg.name || ''));
 
   var g = cfg.gravity;
   if (!g) {

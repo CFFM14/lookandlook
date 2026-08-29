@@ -653,10 +653,15 @@
         var col = idxInPage % 2, row = Math.floor(idxInPage / 2);
         var x = startX + col * (cardW + gap) + offX;
         var y = startY + row * (cardH + rowGap);
-        // 普通关：id 连续，lv.id > unlocked 表示未解锁；特殊关：id 为 50001+，用下标判定
-        var locked = (cardPrefix === 'sp_')
-          ? (GameGlobal.getSpecialIndex(lv.id) >= unlocked)
-          : (lv.id > unlocked);
+        // 各类独立计数与解锁：普通关 id 连续；特殊关用 SPECIAL 下标；层层消消用 STACK 下标
+        var isStack = arr === GameGlobal.STACK_LEVELS;
+        var locked = isStack
+          ? (GameGlobal.getStackIndex(lv.id) >= unlocked)
+          : (cardPrefix === 'sp_'
+            ? (GameGlobal.getSpecialIndex(lv.id) >= unlocked)
+            : (lv.id > unlocked));
+        // 展示序号：每个大类独立从 1 开始（i 即该大类数组中的下标）
+        var displayNo = i + 1;
 
         var id = cardPrefix + lv.id;
         Main.buttonBounds.push({ id: id, x: x, y: y, w: cardW, h: cardH });
@@ -683,10 +688,10 @@
         this.drawText(starStr, x + cardW / 2, y + 14, 13, locked ? '#999' : '#F5A623', 'center', false);
 
         if (locked) {
-          this.drawText('第' + lv.id + '关', x + cardW / 2, y + 38, 17, '#FFF', 'center', true);
+          this.drawText('第' + displayNo + '关', x + cardW / 2, y + 38, 17, '#FFF', 'center', true);
           this.drawText('🔒', x + cardW / 2, y + 66, 22, '#FFF', 'center', false);
         } else {
-          this.drawText('第' + lv.id + '关', x + cardW / 2, y + 34, 15, '#8B5A2B', 'center', true);
+          this.drawText('第' + displayNo + '关', x + cardW / 2, y + 34, 15, '#8B5A2B', 'center', true);
           this.drawTextFit(lv.name, x + cardW / 2, y + 58, cardW - 16, 18, '#D2691E', 'center', true);
           var best = GameGlobal.Storage.getBestScore(lv.id);
           if (best) {
@@ -1028,7 +1033,7 @@
         this.drawText('?', hcx, hcy + 1, 22, '#C8761A', 'center', true);
         Main.buttonBounds.push({ id: 'btn_help', x: helpX, y: helpY, w: helpSz, h: helpSz });
       }
-      this.drawTextFit('第' + game.levelId + '关 · ' + game.cfg.name,
+      this.drawTextFit('第' + GameGlobal.getLevelDisplayNumber(game.levelId) + '关 · ' + game.cfg.name,
         GameGlobal.DESIGN_W / 2, 48 + safeTop, GameGlobal.DESIGN_W - 170, 20, '#7A4A1F', 'center', true);
       this.drawText('⏱ ' + game.getElapsed() + 's', GameGlobal.DESIGN_W - 62, 48 + safeTop, 17, '#7A4A1F', 'right', false);
       ctx.restore();
@@ -1172,9 +1177,11 @@
       // ── 关卡名 + 金币奖励 ──
       var winData = Main.winData;
       var lvCfg = GameGlobal.getLevelConfig(winData.levelId);
-      var titleText = (winData.category === 'special')
-        ? ('特殊关卡 · ' + lvCfg.name)
-        : ('第' + winData.levelId + '关 · ' + lvCfg.name);
+      var titleText = (winData.category === 'stack')
+        ? ('层层消消 · 第' + GameGlobal.getLevelDisplayNumber(winData.levelId) + '关 · ' + lvCfg.name)
+        : (winData.category === 'special'
+          ? ('特殊关卡 · 第' + GameGlobal.getLevelDisplayNumber(winData.levelId) + '关 · ' + lvCfg.name)
+          : ('第' + GameGlobal.getLevelDisplayNumber(winData.levelId) + '关 · ' + lvCfg.name));
       this.drawTextFit(titleText, cx, py + 114, panelW - 50, 20, '#8B5A2B', 'center', true);
       // 金币奖励（金色高亮）
       var coinsEarned = winData.coinsEarned || 0;
