@@ -273,7 +273,12 @@
 
       var pts = [];
       for (var i = 0; i < line.points.length; i++) {
-        var p = game.logicToPixel(line.points[i].r, line.points[i].c);
+        var pp = line.points[i];
+        // 连连看：点用逻辑坐标 {r,c} → 经 logicToPixel 转换；
+        // 层层消消：点已存设计坐标 {x,y}（cam=null，棋盘即设计坐标），直接用。
+        var p = (pp.x !== undefined && pp.y !== undefined)
+          ? { x: pp.x, y: pp.y }
+          : game.logicToPixel(pp.r, pp.c);
         pts.push(p);
       }
       ctx.beginPath();
