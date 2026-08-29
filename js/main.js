@@ -111,11 +111,21 @@
     levelPageDir: 1,       // 翻页方向：1 下一页 / -1 上一页
     // 特殊关卡选关分页状态（复用选关 UI，独立命名空间）
     levelCategory: 'normal', // 当前选关类别：'normal'（普通）| 'special'（特殊关卡）
+    specialSub: null,        // 特殊关子分类：null=完整列表 / 'giant'=巨物关卡 / 'fun'=趣味关卡
     specialPage: 0,
     specialPageAnim: 0,
     specialPageFrom: 0,
     specialPageTo: 0,
     specialPageDir: 1,
+    // 堆叠关卡（层层消消）选关分页状态（独立命名空间，复用选关 UI）
+    stackPage: 0,
+    stackPageAnim: 0,
+    stackPageFrom: 0,
+    stackPageTo: 0,
+    stackPageDir: 1,
+    // 选关“跳转页码”输入覆盖层（屏上数字键盘，不依赖系统键盘）
+    pageJumpActive: false, // 覆盖层是否打开
+    pageJumpText: '',      // 已输入的页码（字符串，1 起）
     _levelDragging: false, // 选关界面水平拖拽中
     _levelDragX: 0,        // 拖拽累计偏移（设计坐标）
     _touchStart: null,
@@ -297,7 +307,7 @@
         if (self._boardPanned) { self._boardPanned = false; return; }
 
         // 选关 / 特殊关界面：水平拖拽结束 → 判定翻页
-        if ((self.page === 'levels' || self.page === 'specials') && self._levelDragging) {
+        if ((self.page === 'levels' || self.page === 'specials' || self.page === 'stacks') && self._levelDragging) {
           var dragX = self._levelDragX;
           self._levelDragging = false;
           // 拖满 60 设计像素才翻页，否则平滑回弹到原页
@@ -348,6 +358,13 @@
         }
         return;
       }
+      // “跳转页码”输入覆盖层打开时：仅响应键盘按钮（pj_ 开头），其余点击忽略，避免误触底层
+      if (this.pageJumpActive) {
+        var pjb = this.hitButton(cx, cy);
+        if (pjb && pjb.indexOf('pj_') === 0) GameGlobal.UI.onAction(pjb);
+        return;
+      }
+
       // 按钮优先（最上层）
       var btn = this.hitButton(cx, cy);
       if (btn) {
@@ -361,8 +378,13 @@
       }
       // 卡片
       if (this.page === 'game' && this.game) {
-        var cell = this.game.hitTest(d.x, d.y);
-        if (cell) this.game.onTapCard(cell.r, cell.c);
+        if (this.game.isStack) {
+          var tile = this.game.hitTest(d.x, d.y);
+          if (tile) this.game.onTapTile(tile);
+        } else {
+          var cell = this.game.hitTest(d.x, d.y);
+          if (cell) this.game.onTapCard(cell.r, cell.c);
+        }
       }
     },
 
@@ -430,7 +452,9 @@
       switch (this.page) {
         case 'menu': r.renderMenu(); break;
         case 'levels': r.renderLevelSelect(); break;
-        case 'specials': r.renderLevelSelect(); break;
+      case 'specials': r.renderLevelSelect(); break;
+      case 'stacks': r.renderLevelSelect(); break;
+      case 'specials_hub': r.renderSpecialHub(); break;
         case 'shop': r.renderShop(); break;
         case 'game': r.renderGame(); break;
         case 'win': r.renderWin(); break;
@@ -439,6 +463,10 @@
       // 游戏内“玩法说明”弹窗（仅在游戏页且打开时绘制，覆盖在游戏画面上方）
       if (this.page === 'game' && this.helpPopupOpen) {
         r.renderHelpOverlay();
+      }
+      // 选关“跳转页码”输入覆盖层（数字键盘），覆盖在选关界面上方
+      if (Main.pageJumpActive) {
+        r.renderPageJump();
       }
     },
   };

@@ -422,6 +422,23 @@ require('./special_levels.js');
 GameGlobal.SPECIAL_LEVELS = SPECIAL_HANDBOOK.concat(GameGlobal.SPECIAL_LEVELS || []);
 GameGlobal.TOTAL_SPECIAL = GameGlobal.SPECIAL_LEVELS.length;
 
+// 巨物关卡：特殊关里 k=3（放大 3 倍的大棋盘）的子集，单独抽出来给“巨物关卡”入口用
+GameGlobal.GIANT_LEVELS = GameGlobal.SPECIAL_LEVELS.filter(function (l) { return (l.k || 1) === 3; });
+GameGlobal.TOTAL_GIANT = GameGlobal.GIANT_LEVELS.length;
+// 趣味关卡：特殊关里非 k=3（k=1/2 普通尺寸）的子集，给“趣味关卡”入口用（hub 与巨物并列）
+GameGlobal.FUN_LEVELS = GameGlobal.SPECIAL_LEVELS.filter(function (l) { return (l.k || 1) !== 3; });
+GameGlobal.TOTAL_FUN = GameGlobal.FUN_LEVELS.length;
+
+// 堆叠关卡（层层消消）：在连连看基础上把“拐角限制”换成“层数限制”的新玩法，
+// 原型手填 3 关（id 2001+，与 1~24 普通关、25~1151 特殊关不冲突）。rows*cols*layers 须为偶数。
+var STACK_HANDBOOK = [
+  { id: 2001, name: '层叠入门', rows: 6, cols: 6, layers: 2, cardSet: 'fruit', _category: 'stack' },
+  { id: 2002, name: '三层叠塔', rows: 6, cols: 6, layers: 3, cardSet: 'fruit', _category: 'stack' },
+  { id: 2003, name: '混合深叠', rows: 7, cols: 6, layers: 4, cardSet: 'mixed', _category: 'stack' },
+];
+GameGlobal.STACK_LEVELS = STACK_HANDBOOK;
+GameGlobal.TOTAL_STACK = GameGlobal.STACK_LEVELS.length;
+
 /** 选关界面每页显示的关卡数（2 列 × 5 行 = 10 关/页，17 关 → 2 页） */
 GameGlobal.LEVELS_PER_PAGE = 10;
 
@@ -446,6 +463,16 @@ GameGlobal.getLevelConfig = function (id) {
       }
     }
   }
+  // 堆叠关卡（层层消消）
+  if (GameGlobal.STACK_LEVELS) {
+    for (i = 0; i < GameGlobal.STACK_LEVELS.length; i++) {
+      if (GameGlobal.STACK_LEVELS[i].id === id) {
+        c = GameGlobal.STACK_LEVELS[i];
+        c._category = 'stack';
+        return c;
+      }
+    }
+  }
   // 兜底：返回普通第 1 关
   var first = GameGlobal.LEVELS[0];
   first._category = 'normal';
@@ -458,6 +485,15 @@ GameGlobal.getSpecialIndex = function (id) {
   if (!GameGlobal.SPECIAL_LEVELS) return -1;
   for (var i = 0; i < GameGlobal.SPECIAL_LEVELS.length; i++) {
     if (GameGlobal.SPECIAL_LEVELS[i].id === id) return i;
+  }
+  return -1;
+};
+
+/** 取堆叠关卡（层层消消）数组中某 id 的下标，找不到返回 -1（用于「下一关」导航） */
+GameGlobal.getStackIndex = function (id) {
+  if (!GameGlobal.STACK_LEVELS) return -1;
+  for (var i = 0; i < GameGlobal.STACK_LEVELS.length; i++) {
+    if (GameGlobal.STACK_LEVELS[i].id === id) return i;
   }
   return -1;
 };
@@ -502,6 +538,11 @@ GameGlobal.getLevelHelp = function (cfg) {
   }
   if (cfg.viewport) {
     lines.push('大地图：单指拖动平移棋盘，双指捏合缩放。');
+  }
+  if (cfg._category === 'stack') {
+    lines.push('层层消消：牌一层层叠起来，只能点最顶层（没被压住的）的牌。');
+    lines.push('选中两张最顶层的同色牌即可消除，不要求路径连通——层，就是新的限制。');
+    lines.push('层数越深越难：下层被压住，要先消掉上层才能动它。');
   }
 
   var typeCount = cfg.fruitTypeCount || 12;

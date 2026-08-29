@@ -700,24 +700,41 @@
       }
     },
 
-    /** 关卡选择 / 特殊关卡选择（同一套分页 UI，按 Main.levelCategory 切换数组与解锁数据） */
+    /** 关卡选择 / 特殊关卡选择（同一套分页 UI，按 Main.levelCategory + Main.specialSub 切换数组与解锁数据） */
     renderLevelSelect: function () {
       this.drawBackground('bg_menu');
       var cx = GameGlobal.DESIGN_W / 2;
       var W = GameGlobal.DESIGN_W;
       var isSpecial = Main.levelCategory === 'special';
-      var arr = isSpecial ? GameGlobal.SPECIAL_LEVELS : GameGlobal.LEVELS;
-      var total = isSpecial ? GameGlobal.TOTAL_SPECIAL : GameGlobal.TOTAL_LEVELS;
-      var unlocked = isSpecial ? GameGlobal.Storage.getUnlockedSpecial() : GameGlobal.Storage.getUnlockedLevels();
+      var isStack = Main.levelCategory === 'stack';
+      var sub = Main.specialSub; // null | 'giant' | 'fun'
+      var isGiant = sub === 'giant';
+      var isFun = sub === 'fun';
+      var arr = isStack ? GameGlobal.STACK_LEVELS
+        : (isGiant ? GameGlobal.GIANT_LEVELS
+          : (isFun ? GameGlobal.FUN_LEVELS
+            : (isSpecial ? GameGlobal.SPECIAL_LEVELS : GameGlobal.LEVELS)));
+      var total = isStack ? GameGlobal.TOTAL_STACK
+        : (isGiant ? GameGlobal.TOTAL_GIANT
+          : (isFun ? GameGlobal.TOTAL_FUN
+            : (isSpecial ? GameGlobal.TOTAL_SPECIAL : GameGlobal.TOTAL_LEVELS)));
+      var unlocked = isStack ? GameGlobal.Storage.getUnlockedStack()
+        : (isSpecial ? GameGlobal.Storage.getUnlockedSpecial() : GameGlobal.Storage.getUnlockedLevels());
       var perPage = GameGlobal.LEVELS_PER_PAGE;
       var totalPages = Math.ceil(total / perPage);
       var safeTop = GameGlobal.SAFE_TOP || 0;
 
-      this.drawText(isSpecial ? '特殊关卡' : '选择关卡', cx, 70 + safeTop, 30, '#8B5A2B', 'center', true);
-      this.drawTextButton(20, 44 + safeTop, 70, 40, '返回', { id: isSpecial ? 'specials_back' : 'levels_back', fontSize: 16 });
+      var title = isStack ? '层层消消'
+        : (isGiant ? '巨物关卡' : (isFun ? '趣味关卡' : (isSpecial ? '特殊关卡' : '选择关卡')));
+      var backId = isStack ? 'stacks_back' : (isSpecial ? 'specials_back' : 'levels_back');
+      this.drawText(title, cx, 70 + safeTop, 30, '#8B5A2B', 'center', true);
+      this.drawTextButton(20, 44 + safeTop, 70, 40, '返回', { id: backId, fontSize: 16 });
 
       // 页码收敛到合法范围
-      if (isSpecial) {
+      if (isStack) {
+        if (Main.stackPage > totalPages - 1) Main.stackPage = totalPages - 1;
+        if (Main.stackPage < 0) Main.stackPage = 0;
+      } else if (isSpecial) {
         if (Main.specialPage > totalPages - 1) Main.specialPage = totalPages - 1;
         if (Main.specialPage < 0) Main.specialPage = 0;
       } else {
@@ -725,14 +742,17 @@
         if (Main.levelPage < 0) Main.levelPage = 0;
       }
 
-      var page = isSpecial ? Main.specialPage : Main.levelPage;
-      var anim = isSpecial ? Main.specialPageAnim : Main.levelPageAnim;
-      var from = isSpecial ? Main.specialPageFrom : Main.levelPageFrom;
-      var to = isSpecial ? Main.specialPageTo : Main.levelPageTo;
-      var dir = isSpecial ? Main.specialPageDir : Main.levelPageDir;
+      var page, anim, from, to, dir;
+      if (isStack) {
+        page = Main.stackPage; anim = Main.stackPageAnim; from = Main.stackPageFrom; to = Main.stackPageTo; dir = Main.stackPageDir;
+      } else if (isSpecial) {
+        page = Main.specialPage; anim = Main.specialPageAnim; from = Main.specialPageFrom; to = Main.specialPageTo; dir = Main.specialPageDir;
+      } else {
+        page = Main.levelPage; anim = Main.levelPageAnim; from = Main.levelPageFrom; to = Main.levelPageTo; dir = Main.levelPageDir;
+      }
       var inAnim = anim > 0 && anim < 1;
       var ctx = this.ctx;
-      var cardPrefix = isSpecial ? 'sp_' : 'lv_';
+      var cardPrefix = (isSpecial || isStack) ? 'sp_' : 'lv_';
 
       // 页面内容：动画中同时绘制新旧两页（位移 + 淡入淡出）；静止时绘制当前页（含拖拽偏移）
       if (inAnim) {
@@ -753,25 +773,131 @@
       var animBusy = inAnim;
       var prevDisabled = page <= 0;
       var nextDisabled = page >= totalPages - 1;
+      var prevId = isStack ? 'stacks_prev' : (isSpecial ? 'specials_prev' : 'levels_prev');
+      var nextId = isStack ? 'stacks_next' : (isSpecial ? 'specials_next' : 'levels_next');
       this.drawTextButton(28, 758, 54, 44, '◀', {
-        id: isSpecial ? 'specials_prev' : 'levels_prev', fontSize: 20,
+        id: prevId, fontSize: 20,
         bg: (prevDisabled || animBusy) ? 'rgba(205,195,175,0.85)' : '#FFE9A8',
         border: '#B0A080', textColor: '#8B5A2B',
       });
       this.drawTextButton(W - 28 - 54, 758, 54, 44, '▶', {
-        id: isSpecial ? 'specials_next' : 'levels_next', fontSize: 20,
+        id: nextId, fontSize: 20,
         bg: (nextDisabled || animBusy) ? 'rgba(205,195,175,0.85)' : '#FFE9A8',
         border: '#B0A080', textColor: '#8B5A2B',
       });
 
-      // 页码指示器（当前页 / 总页数）
-      this.roundRectPath(cx - 70, 812, 140, 30, 15);
-      ctx.fillStyle = 'rgba(255,246,224,0.9)';
+      // 页码指示器（当前页 / 总页数）——点击可输入页码跳转
+      this.roundRectPath(cx - 78, 808, 156, 32, 16);
+      ctx.fillStyle = 'rgba(255,246,224,0.92)';
       ctx.fill();
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = '#E8B34B';
       ctx.stroke();
-      this.drawText((page + 1) + ' / ' + totalPages, cx, 827, 15, '#8B5A2B', 'center', true);
+      this.drawText('✏ ' + (page + 1) + ' / ' + totalPages, cx, 829, 15, '#8B5A2B', 'center', true);
+      var jumpId = isStack ? 'stacks_jump' : (isSpecial ? 'specials_jump' : 'levels_jump');
+      Main.buttonBounds.push({ id: jumpId, x: cx - 78, y: 808, w: 156, h: 32 });
+    },
+
+    /** 特殊关卡玩法 hub：主界面“特殊关卡”进入，列出各玩法入口（巨物关卡 / 趣味关卡），后续新玩法在此追加 */
+    renderSpecialHub: function () {
+      this.drawBackground('bg_menu');
+      var cx = GameGlobal.DESIGN_W / 2;
+      var safeTop = GameGlobal.SAFE_TOP || 0;
+      this.drawText('特殊关卡', cx, 120 + safeTop, 32, '#8B5A2B', 'center', true);
+      this.drawTextButton(20, 44 + safeTop, 70, 40, '返回', { id: 'hub_back', fontSize: 16 });
+
+      // 玩法入口按钮（竖排居中；后续新玩法在 y2 之后再追加即可）
+      var bw = 280, bh = 74, bx = cx - bw / 2;
+      var y1 = 300 + safeTop;
+      this.drawTextButton(bx, y1, bw, bh, '巨物关卡', {
+        id: 'hub_giant', fontSize: 26, gradient: ['#FFD8A8', '#FFB067'], textColor: '#8B4A2B', radius: 18,
+      });
+      var y2 = y1 + bh + 32;
+      this.drawTextButton(bx, y2, bw, bh, '趣味关卡', {
+        id: 'hub_fun', fontSize: 26, gradient: ['#CFE8FF', '#9CCBFF'], textColor: '#2B5A8B', radius: 18,
+      });
+      var y3 = y2 + bh + 32;
+      this.drawTextButton(bx, y3, bw, bh, '层层消消', {
+        id: 'specials_stack', fontSize: 26, gradient: ['#E6D2FF', '#C4A3F0'], textColor: '#4A2B8B', radius: 18,
+      });
+      this.drawText('（后续新玩法将在此添加）', cx, y3 + bh + 52, 14, 'rgba(139,90,43,0.6)', 'center', false);
+    },
+
+    /** 选关“跳转页码”输入覆盖层：屏上数字键盘（无系统键盘依赖，适配微信小游戏 Canvas）
+     *  点页码指示器（levels_jump / specials_jump）打开；pj_0~9 输入、pj_del 删除、pj_ok 跳转、pj_cancel 关闭 */
+    renderPageJump: function () {
+      var ctx = this.ctx;
+      var cx = GameGlobal.DESIGN_W / 2;
+      var W = GameGlobal.DESIGN_W, H = GameGlobal.DESIGN_H;
+      var safeTop = GameGlobal.SAFE_TOP || 0;
+
+      var isSpecial = Main.levelCategory === 'special';
+      var isStack = Main.levelCategory === 'stack';
+      var sub = Main.specialSub;
+      var total = isStack ? GameGlobal.TOTAL_STACK
+        : (sub === 'giant' ? GameGlobal.TOTAL_GIANT
+          : (sub === 'fun' ? GameGlobal.TOTAL_FUN
+            : (isSpecial ? GameGlobal.TOTAL_SPECIAL : GameGlobal.TOTAL_LEVELS)));
+      var totalPages = Math.ceil(total / GameGlobal.LEVELS_PER_PAGE);
+
+      // 暗化遮罩
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(0, 0, W, H);
+
+      var panelW = 330, panelH = 396;
+      var px = cx - panelW / 2;
+      var py = Math.max(safeTop + 12, (H - panelH) / 2);
+
+      // 面板（暖金渐变 + 投影）
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.35)';
+      ctx.shadowBlur = 22;
+      this.roundRectPath(px, py, panelW, panelH, 22);
+      var g = ctx.createLinearGradient(px, py, px, py + panelH);
+      g.addColorStop(0, '#FFFDF2');
+      g.addColorStop(1, '#FFEFC4');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.restore();
+      this.roundRectPath(px, py, panelW, panelH, 22);
+      ctx.lineWidth = 2; ctx.strokeStyle = '#E8A93D'; ctx.stroke();
+
+      // 标题
+      this.drawText('跳转到第几页', cx, py + 38, 21, '#8B5A2B', 'center', true);
+      // 关闭（✕）按钮（右上角）
+      this.drawTextButton(px + panelW - 44, py + 14, 30, 30, '✕', {
+        id: 'pj_cancel', fontSize: 18, bg: 'rgba(220,180,150,0.5)', border: '#C8A070', textColor: '#7A4A20', radius: 15,
+      });
+
+      // 数字显示框
+      var dx = px + 30, dy = py + 64, dw = panelW - 60, dh = 52;
+      this.roundRectPath(dx, dy, dw, dh, 12);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = '#E8B34B'; ctx.stroke();
+      var shown = Main.pageJumpText ? Main.pageJumpText : '—';
+      this.drawText(shown + '  /  ' + totalPages, dx + dw / 2, dy + 34, 24, '#8B5A2B', 'center', true);
+
+      // 数字键盘 4×3
+      var gw = 86, gh = 52, ggap = 12;
+      var gridW = gw * 3 + ggap * 2;
+      var gx0 = px + (panelW - gridW) / 2;
+      var gy0 = py + 134;
+      var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0', 'ok'];
+      for (var ki = 0; ki < keys.length; ki++) {
+        var col = ki % 3, row = Math.floor(ki / 3);
+        var kx = gx0 + col * (gw + ggap);
+        var ky = gy0 + row * (gh + ggap);
+        var key = keys[ki];
+        var label = key === 'del' ? '⌫' : (key === 'ok' ? '✓' : key);
+        var id = key === 'del' ? 'pj_del' : (key === 'ok' ? 'pj_ok' : 'pj_' + key);
+        var isOk = key === 'ok';
+        this.drawTextButton(kx, ky, gw, gh, label, {
+          id: id, fontSize: 22,
+          bg: isOk ? '#FFD66B' : '#FFE9A8',
+          border: '#E8A93D', textColor: isOk ? '#B5651D' : '#8B5A2B', radius: 12,
+        });
+      }
     },
 
     /** 商店 */
@@ -854,11 +980,18 @@
       // 形状地板 + 特殊格底色（仅形状棋盘关）
       if (game.hasShape) this.drawBoardFloor(game);
       // 卡片（先画，连线需要覆盖在卡片上方）
-      for (var r = 1; r <= game.rows; r++) {
-        for (var c = 1; c <= game.cols; c++) {
-          var card = game.cardNodes[r][c];
-          if (card && card.state !== 'eliminated') {
-            this.drawCard(card, now);
+      if (game.isStack) {
+        for (var si = 0; si < game.tiles.length; si++) {
+          var st = game.tiles[si];
+          if (st && st.state !== 'eliminated') this.drawCard(st, now);
+        }
+      } else {
+        for (var r = 1; r <= game.rows; r++) {
+          for (var c = 1; c <= game.cols; c++) {
+            var card = game.cardNodes[r][c];
+            if (card && card.state !== 'eliminated') {
+              this.drawCard(card, now);
+            }
           }
         }
       }

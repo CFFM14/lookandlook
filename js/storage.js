@@ -7,6 +7,7 @@
 
   var KEY_UNLOCK = 'look_unlocked';
   var KEY_UNLOCK_SPECIAL = 'look_unlocked_special';
+  var KEY_UNLOCK_STACK = 'look_unlocked_stack';
   var KEY_BEST_PREFIX = 'look_best_';
   var KEY_SOUND = 'look_sound';
   var KEY_COINS = 'look_coins';
@@ -62,6 +63,29 @@
       // 只有通关当前最前沿（idx === unlocked-1）才解锁下一关；用下标而非 id 比较，避免 id 非 1 序时错设
       if (idx === unlocked - 1 && unlocked < GameGlobal.TOTAL_SPECIAL) {
         wx.setStorageSync(KEY_UNLOCK_SPECIAL, String(unlocked + 1));
+      }
+    },
+
+    /** 读取已解锁的堆叠关卡数（层层消消）：与特殊关独立存档 */
+    getUnlockedStack: function () {
+      if (UNLOCK_ALL_FOR_TEST) return GameGlobal.TOTAL_STACK; // 测试期：全解锁
+      try {
+        var raw = wx.getStorageSync(KEY_UNLOCK_STACK);
+        var val = raw ? parseInt(raw, 10) : 1;
+        if (isNaN(val)) val = 1;
+        return Math.max(1, Math.min(val, GameGlobal.TOTAL_STACK));
+      } catch (e) {
+        return 1;
+      }
+    },
+
+    /** 通关堆叠关后顺序解锁下一个（用下标比较，避免 id 非 1 序时错设） */
+    unlockNextStack: function (currentLevel) {
+      var idx = GameGlobal.getStackIndex(currentLevel);
+      if (idx < 0) return;
+      var unlocked = this.getUnlockedStack();
+      if (idx === unlocked - 1 && unlocked < GameGlobal.TOTAL_STACK) {
+        wx.setStorageSync(KEY_UNLOCK_STACK, String(unlocked + 1));
       }
     },
 
