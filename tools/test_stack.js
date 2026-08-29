@@ -104,6 +104,22 @@ function check(name, cond) { if (!cond) { failures++; console.log('  ✗ ' + nam
     var hit = g.hitTest(covered.visual.x, covered.visual.y);
     check('L' + id + ' hitTest 跳过被压牌', hit === null || hit === covered || !hit.covered);
   }
+
+  // z 序不变量：点击某列最高层牌的中心，hitTest 必须返回该列【最高层】牌。
+  // （绘制按 layer 升序、hitTest 返回最高层，二者一致才不会“先消底层”）
+  var colMap = {};
+  g.tiles.forEach(function (t) { var k = t.gx + ',' + t.gy; (colMap[k] = colMap[k] || []).push(t); });
+  var topHitOK = true;
+  Object.keys(colMap).forEach(function (k) {
+    var col = colMap[k];
+    if (col.length < 2) return;
+    var maxLayer = -1, topTile = null;
+    col.forEach(function (t) { if (!t.covered && t.layer > maxLayer) { maxLayer = t.layer; topTile = t; } });
+    if (!topTile) return;
+    var h = g.hitTest(topTile.visual.x, topTile.visual.y);
+    if (!h || h.layer !== maxLayer) topHitOK = false;
+  });
+  check('L' + id + ' 点击列中心命中最高层（z序一致）', topHitOK);
 });
 
 // ── 2. 消除机制 ──

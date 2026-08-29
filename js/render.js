@@ -991,10 +991,14 @@
       if (game.hasShape) this.drawBoardFloor(game);
       // 卡片（先画，连线需要覆盖在卡片上方）
       if (game.isStack) {
+        // 按 layer 升序绘制：高层最后画、视觉压在顶层，与 hitTest 返回的逻辑顶层一致，
+        // 否则随机数组顺序会让底层盖住顶层，造成“先消底层”的视觉错位。
+        var stackTiles = [];
         for (var si = 0; si < game.tiles.length; si++) {
-          var st = game.tiles[si];
-          if (st && st.state !== 'eliminated') this.drawCard(st, now);
+          if (game.tiles[si] && game.tiles[si].state !== 'eliminated') stackTiles.push(game.tiles[si]);
         }
+        stackTiles.sort(function (a, b) { return a.layer - b.layer; });
+        for (var sk = 0; sk < stackTiles.length; sk++) this.drawCard(stackTiles[sk], now);
       } else {
         for (var r = 1; r <= game.rows; r++) {
           for (var c = 1; c <= game.cols; c++) {
