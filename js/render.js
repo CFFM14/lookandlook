@@ -796,16 +796,16 @@
         border: '#B0A080', textColor: '#8B5A2B',
       });
 
-      // 页码指示器（当前页 / 总页数）——点击可输入页码跳转
-      this.roundRectPath(cx - 78, 808, 156, 32, 16);
+      // 页码指示器（当前页 / 总页数）——点击可输入页码跳转（与左右翻页键同高）
+      this.roundRectPath(cx - 78, 758, 156, 44, 16);
       ctx.fillStyle = 'rgba(255,246,224,0.92)';
       ctx.fill();
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = '#E8B34B';
       ctx.stroke();
-      this.drawText('✏ ' + (page + 1) + ' / ' + totalPages, cx, 829, 15, '#8B5A2B', 'center', true);
+      this.drawText('✏ ' + (page + 1) + ' / ' + totalPages, cx, 780, 15, '#8B5A2B', 'center', true);
       var jumpId = isStack ? 'stacks_jump' : (isSpecial ? 'specials_jump' : 'levels_jump');
-      Main.buttonBounds.push({ id: jumpId, x: cx - 78, y: 808, w: 156, h: 32 });
+      Main.buttonBounds.push({ id: jumpId, x: cx - 78, y: 758, w: 156, h: 44 });
     },
 
     /** 特殊关卡玩法 hub：主界面“特殊关卡”进入，列出各玩法入口（巨物关卡 / 趣味关卡），后续新玩法在此追加 */
