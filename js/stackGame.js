@@ -170,27 +170,15 @@
     return false;
   };
 
-  /** 点牌：选中 / 取消 / 同色消除（去掉拐角寻路，仅顶层同色即可消）；选中/消除特效与连连看一致 */
+  /** 点牌：选中 / 取消 / 同色消除（去掉拐角寻路，仅顶层同色即可消） */
   StackGame.prototype.onTapTile = function (tile) {
     if (!tile || tile.state === 'eliminated' || tile.covered) return;
     var now = Date.now();
-    var T = (GameGlobal.Tween && GameGlobal.Tween.to) ? GameGlobal.Tween : null;
-    // 选中态缩放回弹（弹到 1.2 再回落 1.1，与连连看 highlightCard 一致）；无 Tween 时直接置值
-    var popIn = function (t) {
-      t.state = 'selected'; t.selectT = now;
-      if (T) T.to(t.visual, { scale: 1.2 }, 90, 'easeOut', function () { T.to(t.visual, { scale: 1.1 }, 70, 'easeOut'); });
-      else t.visual.scale = 1.14;
-    };
-    var popOut = function (t) {
-      t.state = 'normal'; t.selectT = 0;
-      if (T) T.to(t.visual, { scale: 1 }, 110, 'easeOut');
-      else t.visual.scale = 1;
-    };
     if (!this.selectedTile) {
-      this.selectedTile = tile; popIn(tile); return;
+      this.selectedTile = tile; tile.state = 'selected'; tile.visual.scale = 1.14; return;
     }
     if (this.selectedTile === tile) {
-      popOut(tile); this.selectedTile = null; return;
+      tile.state = 'normal'; tile.visual.scale = 1; this.selectedTile = null; return;
     }
     if (this.selectedTile.type === tile.type) {
       var a = this.selectedTile, b = tile;
@@ -203,7 +191,7 @@
       setTimeout(function () { if (self._session !== s) return; self._eliminate(a, b); }, 160);
     } else {
       tile.state = 'mismatch'; tile.shakeT = now;
-      popOut(this.selectedTile); this.selectedTile = null;
+      this.selectedTile.state = 'normal'; this.selectedTile.visual.scale = 1; this.selectedTile = null;
       var tg = tile;
       setTimeout(function () { if (tg.state === 'mismatch') tg.state = 'normal'; }, 500);
     }
@@ -211,17 +199,6 @@
 
   StackGame.prototype._eliminate = function (a, b) {
     a.state = 'eliminated'; b.state = 'eliminated';
-    // 消除特效：与连连看一致——白色闪光环 + 彩色小烟花“啪”一下
-    if (GameGlobal.Renderer) {
-      if (GameGlobal.Renderer.spawnRing) {
-        GameGlobal.Renderer.spawnRing(a.visual.x, a.visual.y);
-        GameGlobal.Renderer.spawnRing(b.visual.x, b.visual.y);
-      }
-      if (GameGlobal.Renderer.spawnFirework) {
-        GameGlobal.Renderer.spawnFirework(a.visual.x, a.visual.y);
-        GameGlobal.Renderer.spawnFirework(b.visual.x, b.visual.y);
-      }
-    }
     this._recomputeCovered();
     this.connectionLine = null;
     this.moves++;
