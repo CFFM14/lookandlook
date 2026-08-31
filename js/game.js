@@ -496,11 +496,13 @@
     // 选中态会改变卡片缩放，离屏缓存需失效以便重建（含选中放大效果）
     if (GameGlobal.Renderer && GameGlobal.Renderer.invalidateBoardCache) GameGlobal.Renderer.invalidateBoardCache();
     if (on) {
-      GameGlobal.Tween.to(card.visual, { scale: 1.18 }, 80, 'easeOut', function () {
-        GameGlobal.Tween.to(card.visual, { scale: 1.08 }, 60, 'easeOut');
+      card.selectT = Date.now();
+      GameGlobal.Tween.to(card.visual, { scale: 1.2 }, 90, 'easeOut', function () {
+        GameGlobal.Tween.to(card.visual, { scale: 1.1 }, 70, 'easeOut');
       });
     } else {
-      GameGlobal.Tween.to(card.visual, { scale: 1 }, 100, 'easeOut');
+      card.selectT = 0;
+      GameGlobal.Tween.to(card.visual, { scale: 1 }, 110, 'easeOut');
     }
   };
 
@@ -559,6 +561,7 @@
       var p1 = this.logicToPixel(card1.r, card1.c);
       card1.state = 'eliminating';
       GameGlobal.Renderer.spawnFirework(p1.x, p1.y);
+      if (GameGlobal.Renderer.spawnRing) GameGlobal.Renderer.spawnRing(p1.x, p1.y);
       if (f1) {
         GameGlobal.SoundManager.play('thaw');
         GameGlobal.Renderer.spawnIceShards(p1.x, p1.y);
@@ -578,6 +581,7 @@
         var p2 = self.logicToPixel(card2.r, card2.c);
         card2.state = 'eliminating';
         GameGlobal.Renderer.spawnFirework(p2.x, p2.y);
+        if (GameGlobal.Renderer.spawnRing) GameGlobal.Renderer.spawnRing(p2.x, p2.y);
         if (f2) {
           GameGlobal.SoundManager.play('thaw');
           GameGlobal.Renderer.spawnIceShards(p2.x, p2.y);

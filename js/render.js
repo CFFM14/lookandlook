@@ -250,8 +250,23 @@
         ctx.restore();
       }
 
-      // 选中/提示不再绘制任何框或角标：选中靠视觉缩放(highlightCard Tween)，
-      // 提示靠上方的 drawScale 闪烁脉冲（均复刻原版 Cocos 特效）
+      // 选中态：羊了个羊风格发光脉冲环（白金色，呼吸闪烁），让“当前选中”更醒目
+      if (state === 'selected') {
+        var pt = card.selectT || (card.selectT = now);
+        var pulse = 0.5 + 0.5 * Math.sin((now - pt) / 220 * Math.PI * 2);
+        var ringR = size * (0.60 + 0.07 * pulse);
+        ctx.save();
+        ctx.globalAlpha = 0.30 + 0.45 * pulse;
+        ctx.strokeStyle = '#FFF3B0';
+        ctx.lineWidth = Math.max(2, size * 0.07);
+        ctx.shadowColor = 'rgba(255,205,70,0.95)';
+        ctx.shadowBlur = 9 + 9 * pulse;
+        ctx.beginPath();
+        ctx.arc(v.x, v.y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      // 提示靠上方的 drawScale 闪烁脉冲（复刻原版 Cocos 特效）；选中额外叠加发光环
     },
 
     // ══════════════════════════════════════════════
@@ -263,13 +278,12 @@
       if (!line || !line.points) return;
       var ctx = this.ctx;
       var game = Main.game;
+      var isBlue = line.color === 'blue';
+      var glow = isBlue ? 'rgba(77,166,255,0.55)' : 'rgba(255,205,60,0.7)';
+      var core = isBlue ? '#9FD2FF' : '#FFF1B0';
       ctx.save();
-      ctx.lineWidth = 4;
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
-      ctx.strokeStyle = line.color === 'blue' ? '#4DA6FF' : '#FFD700';
-      ctx.shadowColor = line.color === 'blue' ? 'rgba(77,166,255,0.6)' : 'rgba(255,215,0,0.7)';
-      ctx.shadowBlur = 6;
 
       var pts = [];
       for (var i = 0; i < line.points.length; i++) {
@@ -281,12 +295,29 @@
           : game.logicToPixel(pp.r, pp.c);
         pts.push(p);
       }
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (var j = 1; j < pts.length; j++) {
-        ctx.lineTo(pts[j].x, pts[j].y);
+      var trace = function () {
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (var j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y);
+      };
+      // 外层光晕（羊了个羊式发光拖尾）
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = 14;
+      ctx.strokeStyle = glow;
+      ctx.lineWidth = 9;
+      trace(); ctx.stroke();
+      // 内层亮线
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = core;
+      ctx.lineWidth = 3.5;
+      trace(); ctx.stroke();
+      // 端点亮点
+      ctx.fillStyle = core;
+      for (var e = 0; e < pts.length; e++) {
+        ctx.beginPath();
+        ctx.arc(pts[e].x, pts[e].y, 5, 0, Math.PI * 2);
+        ctx.fill();
       }
-      ctx.stroke();
       ctx.restore();
     },
 
@@ -412,7 +443,17 @@
         var alpha = Math.max(0, Math.min(1, p.life / p.maxLife));
         ctx.save();
         ctx.globalAlpha = alpha;
-        if (p.type === 'shard') {
+        if (p.type === 'ring') {
+          var prog = 1 - p.life / p.maxLife;
+          var rr = p.size + prog * 34;
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = Math.max(1, 5 * (1 - prog));
+          ctx.globalAlpha = alpha * (1 - prog);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, rr, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = alpha;
+        } else if (p.type === 'shard') {
           ctx.translate(p.x, p.y);
           ctx.rotate(p.rot || 0);
           ctx.fillStyle = p.color;
@@ -491,6 +532,16 @@
           space: 'board',
         });
       }
+    },
+
+    /** 消除闪光环：一个向外扩张并淡出的圆环（羊了个羊式“啪”一下） */
+    spawnRing: function (x, y) {
+      this.particles.push({
+        x: x, y: y, vx: 0, vy: 0,
+        life: 320, maxLife: 320,
+        size: 9, color: '#FFFFFF',
+        type: 'ring', space: 'board',
+      });
     },
 
     /** 胜利全屏烟花：3 轮，每轮 2 个随机位置烟花（设计坐标系，不随镜头移动） */
