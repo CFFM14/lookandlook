@@ -430,11 +430,12 @@ GameGlobal.FUN_LEVELS = GameGlobal.SPECIAL_LEVELS.filter(function (l) { return (
 GameGlobal.TOTAL_FUN = GameGlobal.FUN_LEVELS.length;
 
 // 堆叠关卡（层层消消）：在连连看基础上把“拐角限制”换成“层数限制”的新玩法，
-// 原型手填 3 关（id 2001+，与 1~24 普通关、25~1151 特殊关不冲突）。rows*cols*layers 须为偶数。
+// 原型手填 3 关（id 2001+，与 1~24 普通关、25~1151 特殊关不冲突）。
+// 形状用 shape(depth) 生成：diamond=钻石/金字塔错落堆叠；flower=花瓣形。卡牌总数偶数（奇数自动剔除一张）。
 var STACK_HANDBOOK = [
-  { id: 2001, name: '层叠入门', rows: 6, cols: 6, layers: 2, cardSet: 'fruit', _category: 'stack' },
-  { id: 2002, name: '三层叠塔', rows: 6, cols: 6, layers: 3, cardSet: 'fruit', _category: 'stack' },
-  { id: 2003, name: '混合深叠', rows: 7, cols: 6, layers: 4, cardSet: 'mixed', _category: 'stack' },
+  { id: 2001, name: '层叠入门', shape: 'diamond', depth: 2, difficulty: 1, cardSet: 'fruit', _category: 'stack' },
+  { id: 2002, name: '三层叠塔', shape: 'diamond', depth: 3, difficulty: 2, cardSet: 'fruit', _category: 'stack' },
+  { id: 2003, name: '混合深叠', shape: 'flower',  depth: 4, difficulty: 3, cardSet: 'mixed', _category: 'stack' },
 ];
 GameGlobal.STACK_LEVELS = STACK_HANDBOOK;
 GameGlobal.TOTAL_STACK = GameGlobal.STACK_LEVELS.length;

@@ -65,8 +65,7 @@ function check(name, cond) { if (!cond) { failures++; console.log('  ✗ ' + nam
 // ── 1. 构建 + 覆盖 post-condition + 类型偶数 ──
 [2001, 2002, 2003].forEach(function (id) {
   var g = new StackGame(id);
-  var n = g.rows * g.cols * g.layers;
-  check('L' + id + ' 牌数=' + n, g.tiles.length === n);
+  check('L' + id + ' 牌数为偶数（可成对）', g.tiles.length % 2 === 0);
 
   // 每种类型偶数张（天然成对，可两两消）
   var cnt = {};
@@ -74,17 +73,15 @@ function check(name, cond) { if (!cond) { failures++; console.log('  ✗ ' + nam
   var evenOK = Object.keys(cnt).every(function (k) { return cnt[k] % 2 === 0; });
   check('L' + id + ' 每种类型偶数张', evenOK);
 
-  // 关键可解性不变量：同色两张牌不得落在同一列 (gx,gy)（同列堆叠永远无法同消）
-  var sameCol = {};
-  var crossColOK = g.tiles.every(function (t) {
-    var key = t.gx + ',' + t.gy + ',' + t.type;
-    if (sameCol[key]) return false;
-    sameCol[key] = true;
-    return true;
+  // 关键可解性不变量：每张牌占据唯一槽位（不存在两张牌同 cx,cy 同层，避免“永久压死”）
+  var dup = {};
+  var uniqueOK = g.tiles.every(function (t) {
+    var key = t.cx + ',' + t.cy + ',' + t.layer;
+    if (dup[key]) return false; dup[key] = true; return true;
   });
-  check('L' + id + ' 同色牌不共列（可解前提）', crossColOK);
+  check('L' + id + ' 槽位唯一（无同格同层叠死）', uniqueOK);
 
-  // 覆盖 post-condition：covered === 存在更高层同格未消除牌
+  // 覆盖 post-condition：covered === 存在更高层、且矩形重叠的未消除牌
   var okCov = true;
   for (var i = 0; i < g.tiles.length; i++) {
     var t = g.tiles[i];
@@ -92,34 +89,36 @@ function check(name, cond) { if (!cond) { failures++; console.log('  ✗ ' + nam
     for (var j = 0; j < g.tiles.length; j++) {
       var u = g.tiles[j];
       if (u === t || u.state === 'eliminated') continue;
-      if (u.gx === t.gx && u.gy === t.gy && u.layer > t.layer) { expect = true; break; }
+      if (u.layer > t.layer && Math.abs(u.cx - t.cx) < 1 && Math.abs(u.cy - t.cy) < 1) { expect = true; break; }
     }
     if (t.covered !== expect) { okCov = false; break; }
   }
-  check('L' + id + ' 覆盖关系正确', okCov);
+  check('L' + id + ' 覆盖关系正确（矩形重叠）', okCov);
 
-  // hitTest 命中被压牌中心时，不返回被压牌本身（除非它恰好是顶层）
+  // hitTest 命中被压牌中心时，返回的是压在上面的更高层牌（而非被压牌本身）
   var covered = g.tiles.filter(function (t) { return t.covered; })[0];
   if (covered) {
     var hit = g.hitTest(covered.visual.x, covered.visual.y);
-    check('L' + id + ' hitTest 跳过被压牌', hit === null || hit === covered || !hit.covered);
+    check('L' + id + ' hitTest 返回更高层（非被压牌）', hit === null || hit === covered || hit.layer > covered.layer);
   }
 
-  // z 序不变量：点击某列最高层牌的中心，hitTest 必须返回该列【最高层】牌。
-  // （绘制按 layer 升序、hitTest 返回最高层，二者一致才不会“先消底层”）
-  var colMap = {};
-  g.tiles.forEach(function (t) { var k = t.gx + ',' + t.gy; (colMap[k] = colMap[k] || []).push(t); });
-  var topHitOK = true;
-  Object.keys(colMap).forEach(function (k) {
-    var col = colMap[k];
-    if (col.length < 2) return;
-    var maxLayer = -1, topTile = null;
-    col.forEach(function (t) { if (!t.covered && t.layer > maxLayer) { maxLayer = t.layer; topTile = t; } });
-    if (!topTile) return;
-    var h = g.hitTest(topTile.visual.x, topTile.visual.y);
-    if (!h || h.layer !== maxLayer) topHitOK = false;
+  // z 序不变量：点击某张“未覆盖的牌”中心，必须命中最高的那张（与绘制升序一致，不会先消底层）
+  var top = g.tiles.filter(function (t) { return !t.covered; });
+  var zOK = true;
+  top.forEach(function (t) {
+    var h = g.hitTest(t.visual.x, t.visual.y);
+    if (!h) { zOK = false; return; }
+    // 该点落到的所有激活牌里，h 必须是最高层
+    var cellX = (t.visual.x - g.metrics.originX) / g.metrics.cw;
+    var cellY = (t.visual.y - g.metrics.originY) / g.metrics.cw;
+    var maxL = -1;
+    g.tiles.forEach(function (u) {
+      if (u.state === 'eliminated') return;
+      if (Math.abs(cellX - u.cx) <= 0.5 && Math.abs(cellY - u.cy) <= 0.5 && !u.covered && u.layer > maxL) maxL = u.layer;
+    });
+    if (h.layer !== maxL) zOK = false;
   });
-  check('L' + id + ' 点击列中心命中最高层（z序一致）', topHitOK);
+  check('L' + id + ' 点击命中最高层（z序一致）', zOK);
 });
 
 // ── 2. 消除机制 ──
