@@ -78,6 +78,10 @@ GameGlobal.GRID_OVERLAP_RATIO = 0.12;
  *  hesitate=跑到出口准备溜走前的"犹豫"停顿毫秒（预警 + 给玩家最后机会点住它） */
 GameGlobal.MOVER_CFG = { speed: 35, escapeSpeed: 35, hesitate: 900 };
 
+/** 移动卡里当作"香蕉"的那个类型：渲染时用红底 banana.png 替换普通 fruit_12 香蕉图。
+ *  开发者只是换了一张图，类型不变，仍与其它 type-12 香蕉卡互通、可消除。 */
+GameGlobal.BANANA_MOVER_TYPE = 12;
+
 /** 水果名称（与 images/fruit_01~12.png 一一对应） */
 GameGlobal.FRUIT_NAMES = [
   '柚子', '桃子', '梨子', '橘子', '紫葡萄', '红苹果',
@@ -100,15 +104,8 @@ GameGlobal.CARD_SETS = {
 /** 蔬菜名称（与 images/veg_01~12.png 一一对应） */
 GameGlobal.VEG_NAMES = GameGlobal.CARD_SETS.veg.names;
 
-/** 特殊皮肤类型 → 素材 key（mover 香蕉卡等；可扩展更多皮肤，如 b3/b4 → 其它图） */
-GameGlobal.SKIN_ASSET = { b1: 'banana', b2: 'banana', b3: 'banana', b4: 'banana' };
-
-/** 把 card.type（'f3'/'v3'/数字 3/'b1' 皮肤类型）映射成 images 字典键 'fruit_03'/'veg_03'/'banana' */
+/** 把 card.type（'f3'/'v3'/数字 3）映射成 images 字典键 'fruit_03'/'veg_03' */
 GameGlobal.cardTypeToAssetKey = function (type) {
-  // 特殊皮肤类型（如 'b1'/'b2' 香蕉卡）直接映射到对应素材 key
-  if (typeof type === 'string' && GameGlobal.SKIN_ASSET && GameGlobal.SKIN_ASSET[type]) {
-    return GameGlobal.SKIN_ASSET[type];
-  }
   if (typeof type === 'string' && type.length >= 2) {
     var cs = GameGlobal.CARD_SETS[type.charAt(0) === 'v' ? 'veg' : 'fruit'];
     var num = parseInt(type.substring(1), 10);
@@ -436,7 +433,7 @@ GameGlobal.LEVELS = (function () {
     difficulty: 2,
     rows: 10, cols: 8, fruitTypeCount: 12,
     gravity: null, frozenRatio: 0,
-    mover: true, moverTypes: ['b1', 2],
+    mover: true, moverTypes: [12, 2],
     hintEnabled: true, bombEnabled: false, shuffleEnabled: true,
   });
 
