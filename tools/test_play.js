@@ -149,7 +149,7 @@ function autoSolve(g, opts) {
 const TRIALS = 25;
 // 25 为「逃逸的移动卡」（mover 关）：autoSolve 只按普通配对求解，partner 无法在 grid 副本配对会误判死局，
 // 其可解性由 test_mover.js 专项覆盖；这里只测形状关 26（心形）。
-const levels = [26];
+const levels = [1002]; // 心形（特殊关号段 1001 起，1002=心形；移动卡关由 test_mover 验证）
 for (const lv of levels) {
   console.log('[关卡 ' + lv + '] 自动通关 ×' + TRIALS + ' 轮');
   let wins = 0, totalMoves = 0, totalReshuffle = 0, worst = null;

@@ -413,6 +413,7 @@
               case 'btn_hint': g.showHint(); break;
               case 'btn_shuffle': g.shuffleCards(); break;
               case 'btn_bomb': g.useBomb(); break;
+              case 'btn_freeze': g.useFreeze(); break;
             }
           }
           break;

@@ -73,11 +73,11 @@ async function main() {
   const Main = GameGlobal.Main;
 
   // 第 27 关（鹰形 + 镜头）：完整渲染 3 帧（含入场镜头推进）
-  Main.game = new GameGlobal.Game(27);
+  Main.game = new GameGlobal.Game(1001);
   Main.game.startIntro();
   Main.page = 'game';
   for (let i = 0; i < 3; i++) { Main.update(16); Main.render(); }
-  check(true, '第27关游戏页渲染无崩溃（含镜头/地板/特殊格/分区边框）');
+  check(true, '特殊关1001 游戏页渲染无崩溃（含镜头/地板/特殊格/分区边框）');
   check(calls.translate > 0 && calls.scale > 0, '镜头变换被应用');
   check(calls.arc > 0, '特殊格角标/能力徽章已绘制');
   Main.game.skipIntro();
@@ -91,10 +91,10 @@ async function main() {
   Main.helpPopupOpen = false;
 
   // 第 26 关（心形）
-  Main.game = new GameGlobal.Game(26);
+  Main.game = new GameGlobal.Game(1002);
   Main.game.startIntro();
   for (let i = 0; i < 3; i++) { Main.update(16); Main.render(); }
-  check(true, '第26关游戏页渲染无崩溃');
+  check(true, '特殊关1002 游戏页渲染无崩溃');
 
   // 结算页叠在新玩法关之上（镜头 + design 粒子共存）
   Main.winData = { levelId: 25, moves: 40, elapsed: 120, coinsEarned: 100 };

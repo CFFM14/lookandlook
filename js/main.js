@@ -70,6 +70,7 @@
     btn_bomb: 'images/btn_bomb.png',
     btn_shuffle: 'images/btn_shuffle.png',
     btn_hint: 'images/btn_hint.png',
+    banana: 'images/banana.png',
   };
   for (var fi = 1; fi <= 12; fi++) {
     IMAGE_FILES['fruit_' + (fi < 10 ? '0' : '') + fi] = 'images/fruit_' + (fi < 10 ? '0' : '') + fi + '.png';

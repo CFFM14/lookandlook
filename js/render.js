@@ -165,6 +165,37 @@
       ctx.restore();
     },
 
+    /**
+     * 程序绘制「时间静止」按钮（无图片资源：蓝色渐变圆角矩形 + 雪花 + "冻结"文字，匹配 btn_hint 风格）
+     * 用于无生图预算/中文易翻车的场景——与 btn_hint 等图片按钮视觉接近，肉眼难辨差异。
+     */
+    drawFreezeButton: function (x, y, size, id) {
+      var ctx = this.ctx;
+      var pressed = Main.buttonPressed(id);
+      if (id) Main.buttonBounds.push({ id: id, x: x, y: y, w: size, h: size });
+      var s = pressed ? 0.92 : 1;
+      var cx = x + size / 2, cy = y + size / 2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(s, s);
+      ctx.translate(-cx, -cy);
+      // 底板：浅蓝渐变 + 黄色描边（与 btn_hint.png 同色系）
+      this.roundRectPath(x, y, size, size, 14);
+      var grad = ctx.createLinearGradient(0, y, 0, y + size);
+      grad.addColorStop(0, '#A8E0F5');
+      grad.addColorStop(1, '#6CC5E5');
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#E8B34B';
+      ctx.stroke();
+      // 雪花符号（白色，居中稍上）
+      this.drawText('❄', cx, y + size * 0.4, 40, '#FFF', 'center', false);
+      // "冻结"文字（黄色加粗，下方）
+      this.drawText('冻结', cx, y + size * 0.74, 15, '#F5A623', 'center', true);
+      ctx.restore();
+    },
+
     /** 画一张居中的图片（等比） */
     drawImageCentered: function (imgKey, cx, cy, maxW, maxH) {
       var img = this.images[imgKey];
@@ -222,13 +253,15 @@
       // 多卡组关卡 card.type 为 'v<n>'（蔬菜）或 'f<n>'（水果）；老关仍是纯数字 1~12
       var imgKey = GameGlobal.cardTypeToAssetKey(card.type);
       var img = imgKey ? this.images[imgKey] : null;
+
       if (img) {
         ctx.drawImage(img, x, y, size, size);
       }
 
       // 移动卡（mover）：红色薄边框标识，让玩家一眼认出会移动的那张卡（普通卡无此标记）
-      // 内缩 8% 圆角描边，完全嵌在卡片图案内部，不压到卡片边缘
-      if (card.isMover && state !== 'eliminated') {
+      // 内缩 8% 圆角描边，完全嵌在卡片图案内部，不压到卡片边缘。
+      // 香蕉皮肤卡（imgKey==='banana'，如 b1）已有醒目底图，不再叠红框，避免遮挡。
+      if (card.isMover && state !== 'eliminated' && imgKey !== 'banana') {
         var mp = Math.max(2, size * 0.08);
         var inner = size - mp * 2;
         // 卡片缩小到内缩后没有空间时跳过红框（否则负尺寸会让 arcTo 崩）
@@ -948,7 +981,7 @@
       var startX = (GameGlobal.DESIGN_W - cardW * 2 - gapX) / 2;
       // 商品卡区随 SAFE_TOP 下移，避免与顶部"返回"/标题/金币徽章重叠（与选关页同源问题）
       var startY = 110 + safeTop;
-      var toolIcons = { hint: '💡', shuffle: '🔀', bomb: '💣' };
+      var toolIcons = { hint: '💡', shuffle: '🔀', bomb: '💣', freeze: '❄' };
 
       for (var i = 0; i < GameGlobal.SHOP_ITEMS.length; i++) {
         var item = GameGlobal.SHOP_ITEMS[i];
@@ -1080,20 +1113,27 @@
       this.drawParticles('design');
 
       // 底部工具区（结算页不注册这些按钮）——按钮加大 + 剩余次数角标（用完不置灰，点击会提示去商店购买）
+      // 4 个按钮等距分布（15.6 / 109.2 / 202.8 / 296.4，左上角 x），间距 93.6
       if (withButtons) {
         var btnSize = 78;
         var bottomY = GameGlobal.DESIGN_H - 104;
         var tools = GameGlobal.Storage.getTools();
         var toolDefs = [
-          { key: 'hint', img: 'btn_hint', id: 'btn_hint', x: GameGlobal.DESIGN_W / 2 - btnSize * 1.9, enabled: game.cfg.hintEnabled },
-          { key: 'shuffle', img: 'btn_shuffle', id: 'btn_shuffle', x: GameGlobal.DESIGN_W / 2 - btnSize / 2, enabled: game.cfg.shuffleEnabled },
-          { key: 'bomb', img: 'btn_bomb', id: 'btn_bomb', x: GameGlobal.DESIGN_W / 2 + btnSize * 0.9, enabled: game.cfg.bombEnabled },
+          { key: 'hint', img: 'btn_hint', id: 'btn_hint', x: 15.6, enabled: game.cfg.hintEnabled },
+          { key: 'shuffle', img: 'btn_shuffle', id: 'btn_shuffle', x: 109.2, enabled: game.cfg.shuffleEnabled },
+          { key: 'bomb', img: 'btn_bomb', id: 'btn_bomb', x: 202.8, enabled: game.cfg.bombEnabled },
+          { key: 'freeze', id: 'btn_freeze', x: 296.4, enabled: !!(game.movers && game.movers.length) },
         ];
         for (var t = 0; t < toolDefs.length; t++) {
           var td = toolDefs[t];
           if (!td.enabled) continue;
           var count = tools[td.key] || 0;
-          this.drawImageButton(td.x, bottomY, btnSize, btnSize, td.img, td.id);
+          // 冻结按钮无图片，程序绘制（与 btn_hint 同风格的蓝黄按钮）
+          if (td.key === 'freeze') {
+            this.drawFreezeButton(td.x, bottomY, btnSize, td.id);
+          } else {
+            this.drawImageButton(td.x, bottomY, btnSize, btnSize, td.img, td.id);
+          }
           // 次数角标（右上角小圆，略微向左下偏移贴近按钮）
           ctx.save();
           ctx.beginPath();

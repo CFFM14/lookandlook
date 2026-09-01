@@ -238,11 +238,21 @@
         for (var p = 0; p < nn; p++) types.push(others[i], others[i]);
       }
       this.shuffleArray(types);
-      // 中心附近 n 格给 mover：对角铺开（分开放，避免相邻），其余格子填满
-      var r0 = Math.floor(this.rows / 2), c0 = Math.floor(this.cols / 2);
+      // 移动卡起始格：在棋盘内部区（避开最外圈 r∈[2,rows-1]×c∈[2,cols-1]）随机选 n 个互不相邻（曼哈顿距离 ≥ 2）的格子，
+      // 尽量分散又不贴边（边缘卡开局就有逃跑通道，体验差）。
+      var cands = [];
+      for (var rr = 2; rr <= this.rows - 1; rr++) {
+        for (var cc = 2; cc <= this.cols - 1; cc++) cands.push([rr, cc, Math.random()]);
+      }
+      cands.sort(function (a, b) { return a[2] - b[2]; });
       var moverCells = [];
-      for (var mi = 0; mi < n; mi++) {
-        moverCells.push([r0 - 1 + mi * 2, c0 - 1 + mi * 2]); // 10×8 → (4,3) 与 (6,5) 对角分开
+      for (var ci = 0; ci < cands.length && moverCells.length < n; ci++) {
+        var cr = cands[ci][0], cc2 = cands[ci][1];
+        var far = true;
+        for (var mj = 0; mj < moverCells.length; mj++) {
+          if (Math.abs(cr - moverCells[mj][0]) + Math.abs(cc2 - moverCells[mj][1]) < 2) { far = false; break; }
+        }
+        if (far) moverCells.push([cr, cc2]);
       }
       var fillCells = [];
       for (var r2 = 1; r2 <= this.rows; r2++) {
@@ -502,6 +512,7 @@
         vx: 0, vy: 0,         // 当前速度（px/s）
         paused: false,        // 玩家点击选中时暂停移动（给思考时间；取消选中/配对失败恢复）
         hesitateLeft: 0,      // 跑到出口准备溜走时的"犹豫"剩余毫秒（停顿预警，给玩家最后机会点住它）
+        freezeLeft: 0,        // 时间静止剩余毫秒（道具 useFreeze 触发；>0 时整张卡冻结不动；paused 期间不流逝）
         flying: false,        // 前方无阻挡直通棋盘边缘 → 单向滑出屏幕（出屏判负）
         eliminated: false,    // 已被配对消除（一次性目标，不再出现）
       });
@@ -604,6 +615,7 @@
       var mover = this.movers[i];
       if (mover.eliminated || mover.state === 'eliminating' || mover.state === 'eliminated') continue;
       if (mover.paused) continue; // 玩家点击选中时暂停，给思考时间
+      if (mover.freezeLeft > 0) { mover.freezeLeft -= dt; if (mover.freezeLeft < 0) mover.freezeLeft = 0; continue; } // 时间静止（paused 在前，思考时不数）
 
       // 未启动：上下左右任一相邻格被消除 → 朝该解锁方向启动
       if (!mover.moving) {
@@ -1420,6 +1432,26 @@
       that.isProcessing = false;
       that.checkWinOrAutoClear();
     });
+  };
+
+  /** 时间静止：让所有未消除移动卡停止运动 5 秒（包括正在滑出的，可救回）；消耗 1 次 */
+  Game.prototype.useFreeze = function () {
+    if (this.isProcessing) return;
+    if (!this.movers || !this.movers.length) {
+      GameGlobal.Main.showToast('当前关卡没有移动卡');
+      return;
+    }
+    if (!GameGlobal.Storage.useTool('freeze')) {
+      GameGlobal.Main.showToast('时间静止次数不足，去商店购买吧');
+      return;
+    }
+    var MS = 5000;
+    for (var i = 0; i < this.movers.length; i++) {
+      var mv = this.movers[i];
+      if (mv.eliminated || mv.state === 'eliminating' || mv.state === 'eliminated') continue;
+      mv.freezeLeft = MS;
+    }
+    GameGlobal.SoundManager.play('select');
   };
 
   /**

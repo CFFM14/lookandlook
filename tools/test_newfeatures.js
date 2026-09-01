@@ -59,9 +59,9 @@ function zoneCounts(g) {
   return cnt;
 }
 
-console.log('[A] 第27关 展翅雄鹰（形状 + 分区 + 特殊格 + 大地图镜头）');
+console.log('[A] 特殊关1001 展翅雄鹰（形状 + 分区 + 特殊格 + 大地图镜头）');
 {
-  const g = new GameGlobal.Game(27);
+  const g = new GameGlobal.Game(1001);
   check(g.rows === 20 && g.cols === 40, '棋盘 20×40（鹰形放大 2 倍）');
   check(g.hasShape && g.useNewEngine, '启用形状棋盘与新寻路引擎');
   const cnt = zoneCounts(g);
@@ -159,7 +159,7 @@ console.log('[A] 第27关 展翅雄鹰（形状 + 分区 + 特殊格 + 大地图
   // 特殊格已移除：跨区能力不再通过消除解锁（分区默认永久隔离）
 
   // findConnectPath 参数：新引擎固定 2 折 0 穿透（经典行为）
-  const g2 = new GameGlobal.Game(27);
+  const g2 = new GameGlobal.Game(1001);
   let seenOpts = null;
   const origFind = GameGlobal.PathChecker.findPath;
   GameGlobal.PathChecker.findPath = function (grid, rows, cols, r1, c1, r2, c2, opts) {
@@ -171,9 +171,9 @@ console.log('[A] 第27关 展翅雄鹰（形状 + 分区 + 特殊格 + 大地图
   GameGlobal.PathChecker.findPath = origFind;
 }
 
-console.log('[B] 镜头系统（第27关大地图）');
+console.log('[B] 镜头系统（特殊关1001 雄鹰大地图）');
 {
-  const g = new GameGlobal.Game(27);
+  const g = new GameGlobal.Game(1001);
   check(!!g.cam, '大地图关有镜头');
   const fit = g._fitScale();
   check(fit > 0.15 && fit < 0.45, '全景缩放合理（整鹰入屏）fit=' + fit.toFixed(3));
@@ -205,9 +205,9 @@ console.log('[B] 镜头系统（第27关大地图）');
   check(hit && hit.r === 4 && hit.c === 10, '镜头逆变换命中正确格 got=' + JSON.stringify(hit));
 }
 
-console.log('[C] 第26关 心心相印（心形镂空，单分区）');
+console.log('[C] 特殊关1002 心心相印（心形镂空，单分区）');
 {
-  const g = new GameGlobal.Game(26);
+  const g = new GameGlobal.Game(1002);
   let cells = 0;
   for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) if (g.shape[r][c]) cells++;
   check(cells === 66, '心形共 66 格（偶数可配对）got=' + cells);

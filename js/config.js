@@ -100,8 +100,15 @@ GameGlobal.CARD_SETS = {
 /** 蔬菜名称（与 images/veg_01~12.png 一一对应） */
 GameGlobal.VEG_NAMES = GameGlobal.CARD_SETS.veg.names;
 
-/** 把 card.type（'f3'/'v3'/数字 3）映射成 images 字典键 'fruit_03'/'veg_03' */
+/** 特殊皮肤类型 → 素材 key（mover 香蕉卡等；可扩展更多皮肤，如 b3/b4 → 其它图） */
+GameGlobal.SKIN_ASSET = { b1: 'banana', b2: 'banana', b3: 'banana', b4: 'banana' };
+
+/** 把 card.type（'f3'/'v3'/数字 3/'b1' 皮肤类型）映射成 images 字典键 'fruit_03'/'veg_03'/'banana' */
 GameGlobal.cardTypeToAssetKey = function (type) {
+  // 特殊皮肤类型（如 'b1'/'b2' 香蕉卡）直接映射到对应素材 key
+  if (typeof type === 'string' && GameGlobal.SKIN_ASSET && GameGlobal.SKIN_ASSET[type]) {
+    return GameGlobal.SKIN_ASSET[type];
+  }
   if (typeof type === 'string' && type.length >= 2) {
     var cs = GameGlobal.CARD_SETS[type.charAt(0) === 'v' ? 'veg' : 'fruit'];
     var num = parseInt(type.substring(1), 10);
@@ -123,13 +130,15 @@ GameGlobal.ZONE_NAMES = ['左区', '右区', '中区', '四区', '五区', '六�
  * 第 17~20 关为 4 个斜向（对角线）重力演示关「对角坠果」（消除后水果分别滑向 右下/左下/右上/左上 角）。
  * 不再自动生成 17~576 的随机关卡。
  */
-/** 特殊关卡（手调形状演示关）：第 27 关展翅雄鹰、第 26 关心心相印。
- *  固定排在「特殊关卡」列表最前（id 27/26），后面接 gen_levels.js 生成的注水关（id 从 28 起）。
- *  注：id 25 已被普通关第 25 关「逃逸的移动卡」（移动卡玩法）占用，雄鹰改占 27 号避免 getLevelConfig 冲突。
+/** 特殊关卡（手调形状演示关）：展翅雄鹰、心心相印。
+ *  **号段约定（重要）**：普通关用 1~99（1、2、3…），特殊关统一用 1001 起（1001/1002/1003…），
+ *  两类关卡号段彻底分离、永不撞号（getLevelConfig 先查普通关，号段不重叠就不会互相遮蔽）。
+ *  特殊关在列表里显示的「第 N 关」是列表序号（i+1），与 id 无关，所以改 id 不影响玩家看到的编号。
+ *  固定排在「特殊关卡」列表最前（id 1001/1002），后面接 gen_levels.js 生成的注水关（id 从 1003 起）。
  *  _category 由 getLevelConfig 命中时打标；这里只放纯配置。 */
 var SPECIAL_HANDBOOK = [
   {
-    id: 27,
+    id: 1001,
     name: '展翅雄鹰',
     desc: '分区棋盘：左翅12种蔬菜·右翅12种水果·中间混合（全24种上阵）',
     difficulty: 5,
@@ -167,7 +176,7 @@ var SPECIAL_HANDBOOK = [
     },
   },
   {
-    id: 26,
+    id: 1002,
     name: '心心相印',
     desc: '心形棋盘：全盘蔬菜主题',
     difficulty: 4,
@@ -418,15 +427,52 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
   levels.push({
-    // 第25关【逃逸的移动卡】：棋盘上有 2 张会移动的卡片（柚子/桃子，红框标识），找到并消除它们的同类，别让它们飞出屏幕！
+    // 第25关【逃逸的移动卡】：棋盘上有 2 张会移动的卡片，其中一张是「香蕉卡」（红底香蕉图，无红框），
+    // 场上另有一张不动的香蕉卡跟它配对；另一张仍是普通水果（红框标识）。别让任何一张飞出屏幕！
     // 布局：不预留空格（棋盘满格），mover 占中心 2 格；mover 类型各只 1 张 partner（场上唯一同类）；炸弹禁用保护 partner。
     id: 25,
     name: '逃逸的移动卡',
-    desc: '有两张卡片会自己移动，找到并消除它们的同类，别让它们飞出屏幕！',
+    desc: '有一张香蕉卡会自己移动，找到场上不动的那张香蕉把它消除，别让它飞出屏幕！',
     difficulty: 2,
     rows: 10, cols: 8, fruitTypeCount: 12,
     gravity: null, frozenRatio: 0,
+    mover: true, moverTypes: ['b1', 2],
+    hintEnabled: true, bombEnabled: false, shuffleEnabled: true,
+  });
+
+  // 第26关【双卡追逃】：2 张移动卡（无冰）——双卡版换新布局，熟悉分散走位
+  levels.push({
+    id: 26,
+    name: '双卡追逃',
+    desc: '两张卡片同时移动，它们还会互相弹开，别让任何一张溜出屏幕！',
+    difficulty: 3,
+    rows: 10, cols: 8, fruitTypeCount: 12,
+    gravity: null, frozenRatio: 0,
     mover: true, moverTypes: [1, 2],
+    hintEnabled: true, bombEnabled: false, shuffleEnabled: true,
+  });
+
+  // 第27关【寒霜追逃】：3 张移动卡 + 轻冰冻（15%）——冰卡要先破冰，节奏更紧
+  levels.push({
+    id: 27,
+    name: '寒霜追逃',
+    desc: '三张卡片同时移动，还夹着冰块！先破冰才能配对，注意别让卡片溜走',
+    difficulty: 4,
+    rows: 10, cols: 8, fruitTypeCount: 12,
+    gravity: null, frozenRatio: 0.15,
+    mover: true, moverTypes: [1, 2, 3],
+    hintEnabled: true, bombEnabled: false, shuffleEnabled: true,
+  });
+
+  // 第28关【四卡冰狱】：4 张移动卡 + 中冰冻（25%）——满盘移动卡 + 大量冰块，最难一档
+  levels.push({
+    id: 28,
+    name: '四卡冰狱',
+    desc: '四张卡片满场乱跑，冰块遍布棋盘！用时间静止和提示活下来',
+    difficulty: 5,
+    rows: 10, cols: 8, fruitTypeCount: 12,
+    gravity: null, frozenRatio: 0.25,
+    mover: true, moverTypes: [1, 2, 3, 4],
     hintEnabled: true, bombEnabled: false, shuffleEnabled: true,
   });
 
@@ -434,7 +480,8 @@ GameGlobal.LEVELS = (function () {
 })();
 
 GameGlobal.TOTAL_LEVELS = GameGlobal.LEVELS.length;
-// 特殊关卡：27(雄鹰)/26(心形) 手调形状关 在前，gen_levels.js 生成的注水关（id 从 28 起，27 留作雄鹰）在后，统一顺序解锁
+// 特殊关卡：1001(雄鹰)/1002(心形) 手调形状关 在前，gen_levels.js 生成的注水关（id 从 1003 起）在后，统一顺序解锁
+// 号段约定：普通关 1~99（含 25~28 移动卡关），特殊关 1001 起 —— 两类号段不重叠，杜绝 getLevelConfig 撞号遮蔽
 require('./special_levels.js');
 GameGlobal.SPECIAL_LEVELS = SPECIAL_HANDBOOK.concat(GameGlobal.SPECIAL_LEVELS || []);
 GameGlobal.TOTAL_SPECIAL = GameGlobal.SPECIAL_LEVELS.length;
@@ -639,7 +686,7 @@ GameGlobal.TIMING = {
 // ══════════════════════════════════════════════
 
 /** 工具初始免费次数（新玩家赠送，用完去商店购买） */
-GameGlobal.TOOLS_DEFAULT = { hint: 3, shuffle: 2, bomb: 1 };
+GameGlobal.TOOLS_DEFAULT = { hint: 3, shuffle: 2, bomb: 1, freeze: 2 };
 
 /** 商店商品：{id, name, tool, amount, coins, desc} */
 GameGlobal.SHOP_ITEMS = [
@@ -647,6 +694,7 @@ GameGlobal.SHOP_ITEMS = [
   { id: 'buy_hint_5', name: '提示 ×5', tool: 'hint', amount: 5, coins: 160, desc: '超值打包（省 40）' },
   { id: 'buy_shuffle_1', name: '打乱 ×1', tool: 'shuffle', amount: 1, coins: 70, desc: '重新洗牌剩余水果' },
   { id: 'buy_bomb_1', name: '炸弹 ×1', tool: 'bomb', amount: 1, coins: 110, desc: '随机炸掉 3×3 区域' },
+  { id: 'buy_freeze_1', name: '时间静止 ×1', tool: 'freeze', amount: 1, coins: 90, desc: '冻结移动卡 5 秒（移动卡关）' },
 ];
 
 /** 通关金币奖励：首次通关 100，重复通关 20 */

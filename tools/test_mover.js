@@ -92,6 +92,35 @@ function clearRow(g, row) {
   }
 }
 
+/**
+ * 把 mover 挪到指定格（测试辅助：布局已全盘随机，依赖"上/左邻格有卡"的测试需先把 mover 放到安全中间位置）。
+ * 目标格原有卡交换到 mover 原位（保持卡数不变）；mover 占位格 grid=0。
+ */
+function relocateMover(g, mover, r, c) {
+  const origR = mover.r, origC = mover.c;
+  const target = g.cardNodes[r][c];
+  if (target && target !== mover) {
+    target.r = origR; target.c = origC;
+    const qx = g.logicToPixel(origR, origC);
+    target.visual.x = qx.x; target.visual.y = qx.y;
+    g.cardNodes[origR][origC] = target;
+    g.grid[origR][origC] = target.type;
+  }
+  mover.r = r; mover.c = c;
+  const px = g.logicToPixel(r, c);
+  mover.visual.x = px.x; mover.visual.y = px.y;
+  // mover 是浮动卡：不占 cardNodes（否则 findCardsByType 会把 mover 自己误当成同类卡）
+  g.cardNodes[r][c] = null;
+  g.grid[r][c] = 0;
+}
+/** 常用安全中间位置（上下左右都有邻居格，非边缘） */
+const SAFE_MOVER_POS = [5, 4];
+/** 把两张 mover 挪到固定安全位（movers[0]→(5,4) 中间、movers[1]→(8,7) 远角），避免随机布局干扰测试 */
+function parkMovers(g) {
+  relocateMover(g, g.movers[0], SAFE_MOVER_POS[0], SAFE_MOVER_POS[1]);
+  if (g.movers.length > 1) relocateMover(g, g.movers[1], 8, 7);
+}
+
 async function main() {
   console.log('\n[1] 第 25 关配置');
   {
@@ -112,9 +141,9 @@ async function main() {
     const g = new Game(25);
     ok(g.movers.length === 2, '创建 2 张移动卡');
     ok(g.movers.every(m => !m.eliminated && m.isMover), '两张 mover 均存活且带红框标记');
-    // 位置在中心附近（行 4~7、列 3~6 范围内）
-    ok(g.movers.every(m => m.r >= 4 && m.r <= 7 && m.c >= 3 && m.c <= 6),
-      'mover 放在中心附近（got: ' + g.movers.map(m => '(' + m.r + ',' + m.c + ')').join(' ') + '）');
+    // 位置：棋盘内部区分散（避开最外圈，不贴边）+ 互不相邻
+    ok(g.movers.every(m => m.r >= 2 && m.r <= g.rows - 1 && m.c >= 2 && m.c <= g.cols - 1),
+      'mover 都在棋盘内部区（不贴边，got: ' + g.movers.map(m => '(' + m.r + ',' + m.c + ')').join(' ') + '）');
     // 两张分开放（不相邻）
     const mdist = Math.abs(g.movers[0].r - g.movers[1].r) + Math.abs(g.movers[0].c - g.movers[1].c);
     ok(mdist > 1, '两张移动卡分开放（不相邻，曼哈顿距离=' + mdist + '）');
@@ -159,6 +188,7 @@ async function main() {
   {
     const g = new Game(25);
     const mover = g.movers[0];
+    parkMovers(g); // 布局随机，把两张 mover 挪到固定安全位（测试用）
     const partner = findCardsByType(g, mover.type)[0];
     // 把 partner 搬到 mover 相邻格，保证 2 折直连
     const pr = mover.r, pc = mover.c + 1 <= g.cols ? mover.c + 1 : mover.c - 1;
@@ -191,6 +221,7 @@ async function main() {
   {
     const g = new Game(25);
     const mover = g.movers[0];
+    parkMovers(g); // 布局随机，把两张 mover 挪到固定安全位（测试用）
     const y0 = mover.visual.y;
     g.updateMover(100);
     ok(mover.visual.y === y0, '开局静止：周围未解锁时不动');
@@ -218,6 +249,7 @@ async function main() {
   {
     const g = new Game(25);
     const mover = g.movers[0];
+    parkMovers(g); // 布局随机，把两张 mover 挪到固定安全位（测试用）
     // 启动：清上邻格 → 朝上
     const ur = mover.r - 1, uc = mover.c;
     g.grid[ur][uc] = 0;
@@ -245,6 +277,7 @@ async function main() {
   {
     const g = new Game(25);
     const mover = g.movers[0];
+    parkMovers(g); // 布局随机，把两张 mover 挪到固定安全位（测试用）
     // 启动：清左邻格 → 朝左
     const lc = mover.c - 1;
     ok(g.grid[mover.r][lc] !== 0, '左邻格有卡（可消除）');
@@ -270,6 +303,7 @@ async function main() {
   {
     const g = new Game(25);
     const mover = g.movers[0];
+    parkMovers(g); // 布局随机，把两张 mover 挪到固定安全位（测试用）
     // 先启动：清上邻格
     const ur = mover.r - 1, uc = mover.c;
     g.grid[ur][uc] = 0;
@@ -319,6 +353,7 @@ async function main() {
   {
     const g = new Game(25);
     const mover = g.movers[0];
+    parkMovers(g); // 布局随机，把两张 mover 挪到固定安全位（测试用）
     const mate = findCardsByType(g, mover.type)[0];
     // 让 mover 移动起来（清上邻格启动）
     const ur = mover.r - 1, uc = mover.c;
@@ -343,12 +378,19 @@ async function main() {
   {
     const g = new Game(25);
     const mover = g.movers[0];
-    const r = mover.r;
-    // 清空 mover 所在行；两端紧邻格放两张同型卡（中间恰是 mover 占位格）
+    parkMovers(g); // 布局随机，把两张 mover 挪到固定安全位（测试用）
+    // 固定用中间行 r=5（边缘行有外围通道可 2 折绕行，测试会不稳定）
+    const r = 5;
+    // 清空行 r
     for (let c = 1; c <= g.cols; c++) {
       g.grid[r][c] = 0;
       if (g.cardNodes[r][c]) g.cardNodes[r][c] = null;
     }
+    // 把 mover 显式挪到 (r,3) 占位（布局已全盘随机，测试需固定挡路格在中间）
+    mover.r = r; mover.c = 3;
+    const pm = g.logicToPixel(r, 3);
+    mover.visual.x = pm.x; mover.visual.y = pm.y;
+    // 两端紧邻格放两张同型卡（中间恰是 mover 占位格）
     g.grid[r][2] = 3; g.grid[r][4] = 3;
     // 其余行全部填满障碍 → 直线是唯一 2 折内通路
     for (let rr = 1; rr <= g.rows; rr++) {
@@ -404,6 +446,7 @@ async function main() {
   {
     const g = new Game(25);
     const m = g.movers[0];
+    parkMovers(g); // 布局随机，挪到固定安全位
     // 启动
     const ur = m.r - 1, uc = m.c;
     g.grid[ur][uc] = 0;
@@ -419,6 +462,7 @@ async function main() {
   console.log('\n[15] 出口犹豫（准备溜走前停顿预警）');
   {
     const g = new Game(25);
+    parkMovers(g); // 固定 mover[0]→(5,4)、mover[1]→(8,7)，避免随机挡路
     const m1 = g.movers[1];
     const r = m1.r;
     // 行 r 全清 → 向左直通边缘
@@ -444,6 +488,39 @@ async function main() {
     let guard2 = 0;
     while (!m1.flying && guard2++ < 200) g.updateMover(100);
     ok(m1.flying === true, '犹豫结束后开始滑出（flying=true）');
+  }
+
+  console.log('\n[16] 时间静止道具（useFreeze 5s）');
+  {
+    const g = new Game(25);
+    const m = g.movers[0];
+    parkMovers(g); // 布局随机，挪到固定安全位
+    // 启动
+    const ur = m.r - 1, uc = m.c;
+    g.grid[ur][uc] = 0;
+    if (g.cardNodes[ur][uc]) g.cardNodes[ur][uc] = null;
+    g.updateMover(50);
+    ok(m.moving === true, '前置：mover 已启动');
+    const beforeCount = GameGlobal.Storage.getTools().freeze;
+    // 触发时间静止
+    g.useFreeze();
+    ok(m.freezeLeft > 0 && m.freezeLeft === 5000, 'useFreeze 后 mover 进入冻结（freezeLeft=5000ms）');
+    ok(GameGlobal.Storage.getTools().freeze === beforeCount - 1, '库存 -1');
+    // 冻结期间不动
+    const x0 = m.visual.x, y0 = m.visual.y;
+    g.updateMover(500);
+    ok(m.visual.x === x0 && m.visual.y === y0, '冻结 500ms 期间 updateMover 不动');
+    // 时间流逝后冻结结束
+    for (let i = 0; i < 150 && m.freezeLeft > 0; i++) g.updateMover(50);
+    ok(m.freezeLeft <= 0, '累计 7.5s 后冻结结束（freezeLeft ≤ 0）');
+    const x1 = m.visual.x, y1 = m.visual.y;
+    g.updateMover(50);
+    ok(m.visual.x !== x1 || m.visual.y !== y1, '冻结结束后恢复移动');
+    // 非 mover 关：useFreeze 不消耗库存（提示后 return）
+    const g2 = new Game(1);
+    const before2 = GameGlobal.Storage.getTools().freeze;
+    g2.useFreeze();
+    ok(GameGlobal.Storage.getTools().freeze === before2, '非 mover 关 useFreeze 不消耗库存（toast 提示）');
   }
 
   console.log('\n' + (failed ? '—— 有 ' + failed + ' 项失败 ——' : '—— 全部通过 ✓ ——') + '（通过 ' + passed + ' 项）');

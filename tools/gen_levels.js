@@ -37,7 +37,8 @@ const shapeNames = G.shapeNames;
 const MAX_CELLS = 2100;          // 放大后总格数上限（15 列原型 k=3 放大为 45x45=2025 格，保留「巨」档以保 1000+ 关；真机若「巨」档明显卡顿再收紧）
 const EXCLUDE = new Set(['eagle']); // 雄鹰作为第 25 关独家手调，不进入注水池
 const FROZEN = [0, 0.2, 0.3];
-const START_ID = 28;             // 生成关 id 起点（1~25 为手调普通关含移动卡关，26/28+ 为特殊关；27 被移动卡关占用，故从 28 起）
+const START_ID = 1003;           // 生成关 id 起点（号段约定：普通关 1~99；特殊关统一 1001 起 ——
+                                 // 1001 展翅雄鹰 / 1002 心心相印 / 1003+ 本生成器产出的注水关）
 
 const SHAPE_CN = {
   heart: '爱心', star: '星星', circle: '圆', diamond: '菱形', triangle: '三角',
@@ -156,12 +157,12 @@ const specialLevels = allPool.map(s => { const lv = s.lv; lv.id = id++; return l
 // ── 输出 js/special_levels.js ──
 function emitSpecial(target, levels) {
   const lines = [];
-  lines.push('// 自动生成，勿手改 —— 由 tools/gen_levels.js 产出（特殊关卡：id 从 28 起，按难度递进）');
+  lines.push('// 自动生成，勿手改 —— 由 tools/gen_levels.js 产出（特殊关卡：id 从 ' + START_ID + ' 起，按难度递进）');
   lines.push('// 共 ' + levels.length + ' 关，覆盖 k=1/2/3 全尺寸，顺序解锁。');
-  lines.push('// 注意：id 27 为手调特殊关「展翅雄鹰」（config.js SPECIAL_HANDBOOK），START_ID=28 保证重跑不会覆盖；');
-  lines.push('//       id 25 为普通关「逃逸的移动卡」（移动卡玩法），不在本文件内。');
+  lines.push('// **号段约定**：普通关 1~99；特殊关统一 1001 起（1001 展翅雄鹰 / 1002 心心相印 / ' + START_ID + '+ 本文件注水关），');
+  lines.push('// 两类号段彻底分离、永不撞号（getLevelConfig 先查普通关，号段不重叠即不会互相遮蔽）。');
   lines.push('// 想新增特殊玩法：在此数组追加一条（引用版：shapeKey/k/zoneMode/cardSet，运行时由 config.js 的 expandShapeRef 展开），');
-  lines.push('// 或把更多 k 档/维度交给 gen_levels.js 重跑生成。1~25 为手调普通关（含移动卡关），不在本文件内。');
+  lines.push('// 或把更多 k 档/维度交给 gen_levels.js 重跑生成。1~99 为手调普通关（含移动卡关），不在本文件内。');
   lines.push('GameGlobal.SPECIAL_LEVELS = [');
   for (const lv of levels) {
     lines.push('  {');
