@@ -126,8 +126,8 @@ async function main() {
   {
     const cfg = GameGlobal.getLevelConfig(25);
     ok(cfg && cfg.mover === true, 'id:25 存在且 mover=true');
-    ok(Array.isArray(cfg.moverTypes) && cfg.moverTypes.length === 2, 'moverTypes = 2 种（2 张移动卡）');
-    ok(cfg.moverTypes[0] !== cfg.moverTypes[1], '2 张 mover 类型互不相同（避免互配卡死）');
+    ok(Array.isArray(cfg.moverTypes) && cfg.moverTypes.length === 1, 'moverTypes = 1 种（仅 1 张移动卡，第25关）');
+    ok(cfg.moverTypes[0] === 12, '移动卡为香蕉类型 12');
     ok(cfg.rows === 10 && cfg.cols === 8, '棋盘 10 行 × 8 列');
     ok(!cfg.shapeMap, '无 shapeMap（矩形棋盘，非形状关）');
     ok(cfg.bombEnabled === false, '炸弹禁用（保护 partner）');
@@ -136,18 +136,20 @@ async function main() {
     ok(g.cam === null, '无镜头');
   }
 
-  console.log('\n[2] 开局状态（满格棋盘 + 2 张中心 mover）');
+  console.log('\n[2] 开局状态（满格棋盘 + 1 张中心 mover）');
   {
     const g = new Game(25);
-    ok(g.movers.length === 2, '创建 2 张移动卡');
-    ok(g.movers.every(m => !m.eliminated && m.isMover), '两张 mover 均存活且带红框标记');
+    ok(g.movers.length === 1, '创建 1 张移动卡');
+    ok(g.movers.every(m => !m.eliminated && m.isMover), '唯一 mover 存活且带标记');
     // 位置：棋盘内部区分散（避开最外圈，不贴边）+ 互不相邻
     ok(g.movers.every(m => m.r >= 2 && m.r <= g.rows - 1 && m.c >= 2 && m.c <= g.cols - 1),
       'mover 都在棋盘内部区（不贴边，got: ' + g.movers.map(m => '(' + m.r + ',' + m.c + ')').join(' ') + '）');
-    // 两张分开放（不相邻）
-    const mdist = Math.abs(g.movers[0].r - g.movers[1].r) + Math.abs(g.movers[0].c - g.movers[1].c);
-    ok(mdist > 1, '两张移动卡分开放（不相邻，曼哈顿距离=' + mdist + '）');
-    ok(countCards(g) === 78, '场上普通卡 78 张');
+    // 多张 mover 时检查分开放（不相邻）；单张 mover 跳过
+    if (g.movers.length > 1) {
+      const mdist = Math.abs(g.movers[0].r - g.movers[1].r) + Math.abs(g.movers[0].c - g.movers[1].c);
+      ok(mdist > 1, '两张移动卡分开放（不相邻，曼哈顿距离=' + mdist + '）');
+    }
+    ok(countCards(g) === 79, '场上普通卡 79 张（1 张 mover 占位不在 cardNodes）');
     // 满格：grid 空格只有 2 个，且就是 mover 占位格
     let emptyCount = 0, emptyNotMover = 0;
     for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) {
@@ -156,14 +158,14 @@ async function main() {
         if (!g.movers.some(m => m.r === r && m.c === c)) emptyNotMover++;
       }
     }
-    ok(emptyCount === 2, '棋盘仅 2 个空格（mover 占位格）');
+    ok(emptyCount === 1, '棋盘仅 1 个空格（mover 占位格）');
     ok(emptyNotMover === 0, '没有额外预留空格（棋盘满格，靠消除解锁空间）');
     // 每种 mover 类型场上恰 1 张 partner
     for (const m of g.movers) {
       ok(findCardsByType(g, m.type).length === 1, 'mover 类型 ' + m.type + ' 场上唯一同类（partner）恰 1 张');
     }
     ok(g.movers.every(m => m.moving === false && m.vx === 0), '开局静止（moving=false, vx=0）');
-    ok(g.remainingPairs === 38, '剩余对数 = 38（partner 单卡不计对）');
+    ok(g.remainingPairs === 39, '剩余对数 = 39（partner 单卡不计对）');
   }
 
   console.log('\n[3] 单例保护（两种 partner 不被自动消）');
@@ -176,8 +178,10 @@ async function main() {
       if (cd && !partners.includes(cd)) { g.grid[r][c] = 0; g.cardNodes[r][c] = null; }
     }
     g.recomputeSingletons();
-    ok(g.cardNodes[partners[0].r][partners[0].c] === partners[0], 'partner1 被保护，不会被单例机制吞掉');
-    ok(g.cardNodes[partners[1].r][partners[1].c] === partners[1], 'partner2 被保护，不会被单例机制吞掉');
+    ok(g.cardNodes[partners[0].r][partners[0].c] === partners[0], 'partner 被保护，不会被单例机制吞掉');
+    if (partners.length > 1) {
+      ok(g.cardNodes[partners[1].r][partners[1].c] === partners[1], 'partner2 被保护，不会被单例机制吞掉');
+    }
     // mover 全部消除后保护解除
     for (const m of g.movers) { m.eliminated = true; m.state = 'eliminated'; }
     g.recomputeSingletons();
@@ -188,7 +192,7 @@ async function main() {
   {
     const g = new Game(25);
     const mover = g.movers[0];
-    parkMovers(g); // 布局随机，把两张 mover 挪到固定安全位（测试用）
+    parkMovers(g); // 布局随机，把 mover 挪到固定安全位（测试用）
     const partner = findCardsByType(g, mover.type)[0];
     // 把 partner 搬到 mover 相邻格，保证 2 折直连
     const pr = mover.r, pc = mover.c + 1 <= g.cols ? mover.c + 1 : mover.c - 1;
@@ -201,8 +205,8 @@ async function main() {
     ok(partner.state === 'eliminated', 'partner 被消除');
     ok(g.cardNodes[pr][pc] === null, 'partner 格子已清空');
     ok(g.selectedCard === null && g.isProcessing === false, '记账完成，锁释放');
-    ok(countCards(g) === 77, '消除后场上 77 张');
-    ok(g.movers[1] && !g.movers[1].eliminated, '另一张 mover 不受影响');
+    ok(countCards(g) === 78, '消除后场上 78 张');
+    ok(g.movers.length === 1, '25关仅1张移动卡');
   }
 
   console.log('\n[5] mover 命中检测（返回命中的那张）');
@@ -210,8 +214,10 @@ async function main() {
     const g = new Game(25);
     const m0 = g.movers[0];
     ok(g.hitTestMover(m0.visual.x, m0.visual.y) === m0, '命中 mover0 中心');
-    const m1 = g.movers[1];
-    ok(g.hitTestMover(m1.visual.x, m1.visual.y) === m1, '命中 mover1 中心');
+    if (g.movers.length > 1) {
+      const m1 = g.movers[1];
+      ok(g.hitTestMover(m1.visual.x, m1.visual.y) === m1, '命中 mover1 中心');
+    }
     ok(g.hitTestMover(m0.visual.x + 500, m0.visual.y) === null, '远离 mover 不命中');
     m0.state = 'eliminated';
     ok(g.hitTestMover(m0.visual.x, m0.visual.y) === null, '消除后不再命中');
@@ -344,9 +350,12 @@ async function main() {
     // _spreadTypes 贪心隔开同类，随机铺放时相邻同型通常 20+，这里应极少
     ok(sameAdj <= 6, '相邻同型对数 ≤ 6（实际 ' + sameAdj + '）');
     // mover partner 仍在场且唯一
-    const m0 = g.movers[0], m1 = g.movers[1];
+    const m0 = g.movers[0];
     ok(findCardsByType(g, m0.type).length === 1, 'mover0 的 partner 唯一');
-    ok(findCardsByType(g, m1.type).length === 1, 'mover1 的 partner 唯一');
+    if (g.movers.length > 1) {
+      const m1 = g.movers[1];
+      ok(findCardsByType(g, m1.type).length === 1, 'mover1 的 partner 唯一');
+    }
   }
 
   console.log('\n[11] 消除连线端点对准 mover 实时位置');
@@ -414,9 +423,9 @@ async function main() {
     ok(g.hasValidMove() === true, '挡路不算死局（hasValidMove 无视 mover 墙，等它移开即可）');
   }
 
-  console.log('\n[13] 移动卡互相碰撞（不重叠，主动方反弹）');
+  console.log('\n[13] 移动卡互相碰撞（不重叠，主动方反弹，用 2 张 mover 的 26 关）');
   {
-    const g = new Game(25);
+    const g = new Game(26);
     const a = g.movers[0], b = g.movers[1];
     // 行 4 清空 1~5 列保证移动通畅
     for (let c = 1; c <= 5; c++) {
@@ -459,9 +468,9 @@ async function main() {
     ok(m.visual.x !== x0 || m.visual.y !== y0, '常规帧正常移动');
   }
 
-  console.log('\n[15] 出口犹豫（准备溜走前停顿预警）');
+  console.log('\n[15] 出口犹豫（准备溜走前停顿预警，用 2 张 mover 的 26 关）');
   {
-    const g = new Game(25);
+    const g = new Game(26);
     parkMovers(g); // 固定 mover[0]→(5,4)、mover[1]→(8,7)，避免随机挡路
     const m1 = g.movers[1];
     const r = m1.r;

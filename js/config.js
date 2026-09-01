@@ -424,16 +424,16 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
   levels.push({
-    // 第25关【逃逸的移动卡】：棋盘上有 2 张会移动的卡片，其中一张是「香蕉卡」（红底香蕉图，无红框），
-    // 场上另有一张不动的香蕉卡跟它配对；另一张仍是普通水果（红框标识）。别让任何一张飞出屏幕！
-    // 布局：不预留空格（棋盘满格），mover 占中心 2 格；mover 类型各只 1 张 partner（场上唯一同类）；炸弹禁用保护 partner。
+    // 第25关【逃逸的移动卡】：棋盘上有 1 张会移动的香蕉卡（红底香蕉图，无红框），
+    // 场上另有一张不动的香蕉卡跟它配对；只有这一张移动卡（26/27/28 才分别是 2/3/4 张）。
+    // 布局：不预留空格（棋盘满格），mover 占 1 格；香蕉类型只 1 张 partner（场上唯一同类）；炸弹禁用保护 partner。
     id: 25,
     name: '逃逸的移动卡',
     desc: '有一张香蕉卡会自己移动，找到场上不动的那张香蕉把它消除，别让它飞出屏幕！',
     difficulty: 2,
     rows: 10, cols: 8, fruitTypeCount: 12,
     gravity: null, frozenRatio: 0,
-    mover: true, moverTypes: [12, 2],
+    mover: true, moverTypes: [12],
     hintEnabled: true, bombEnabled: false, shuffleEnabled: true,
   });
 
