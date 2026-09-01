@@ -9,6 +9,9 @@
     _ctxs: {},
     _enabled: true,
     _initialized: false,
+    _bgmLoading: false,
+    _bgmReady: false,
+    _bgmWanted: false,
 
     init: function () {
       if (this._initialized) return;
@@ -29,14 +32,52 @@
         }
       }
 
-      // 背景音乐（循环播放，音量压低不抢音效）
+      // 背景音乐在 subpkg_bgm/ 分包里，后台下载，下完自动播
+      this._bgmWanted = this._enabled;
+      this.loadBgm();
+    },
+
+    /**
+     * 下载 BGM 分包（约 1.8MB）。失败也不影响游戏，只是没背景音乐。
+     * 分包下好后若当前音效开关是开着的，会自动开始播放。
+     */
+    loadBgm: function () {
+      var self = this;
+      if (this._bgmReady || this._bgmLoading) return;
+      if (typeof wx === 'undefined' || !wx.loadSubpackage) return;
+      this._bgmLoading = true;
+      try {
+        var task = wx.loadSubpackage({
+          name: 'bgm',
+          success: function () {
+            self._bgmLoading = false;
+            self._bgmReady = true;
+            self._createBgm();
+            if (self._bgmWanted) self.playBgm();
+          },
+          fail: function (err) {
+            self._bgmLoading = false;
+            console.warn('[audio] BGM 分包加载失败，游戏不受影响', err);
+          }
+        });
+        if (task && task.onProgressUpdate) {
+          task.onProgressUpdate(function (res) {
+            self._bgmProgress = res.progress;
+          });
+        }
+      } catch (e) {
+        this._bgmLoading = false;
+      }
+    },
+
+    /** 分包就绪后创建 BGM 播放器（循环，音量压低不抢音效） */
+    _createBgm: function () {
       try {
         var bgm = wx.createInnerAudioContext();
-        bgm.src = 'audio/bgm_gem_jam.mp3';
+        bgm.src = 'subpkg_bgm/bgm_gem_jam.mp3';
         bgm.loop = true;
         bgm.volume = 0.45;
         this._ctxs['bgm'] = bgm;
-        if (this._enabled) this.playBgm();
       } catch (e) {
         this._ctxs['bgm'] = null;
       }
@@ -56,10 +97,15 @@
       }
     },
 
-    /** 播放背景音乐（从暂停处继续） */
+    /** 播放背景音乐（从暂停处继续）。分包没下好就先触发下载，下完自动播 */
     playBgm: function () {
+      this._bgmWanted = true;
       var bgm = this._ctxs['bgm'];
-      if (!bgm || !this._enabled) return;
+      if (!bgm) {
+        this.loadBgm();
+        return;
+      }
+      if (!this._enabled) return;
       try {
         bgm.play();
       } catch (e) {
@@ -69,6 +115,7 @@
 
     /** 暂停背景音乐 */
     stopBgm: function () {
+      this._bgmWanted = false;
       var bgm = this._ctxs['bgm'];
       if (!bgm) return;
       try {

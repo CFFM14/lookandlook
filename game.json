@@ -1,6 +1,12 @@
 {
   "deviceOrientation": "portrait",
   "showStatusBar": false,
+  "subpackages": [
+    {
+      "name": "bgm",
+      "root": "subpkg_bgm/"
+    }
+  ],
   "networkTimeout": {
     "request": 5000,
     "connectSocket": 5000,
