@@ -147,7 +147,9 @@ function autoSolve(g, opts) {
 
 // ── 实测：每关多轮随机种子 ──────────────────────
 const TRIALS = 25;
-const levels = [25, 26];
+// 25 为「逃逸的移动卡」（mover 关）：autoSolve 只按普通配对求解，partner 无法在 grid 副本配对会误判死局，
+// 其可解性由 test_mover.js 专项覆盖；这里只测形状关 26（心形）。
+const levels = [26];
 for (const lv of levels) {
   console.log('[关卡 ' + lv + '] 自动通关 ×' + TRIALS + ' 轮');
   let wins = 0, totalMoves = 0, totalReshuffle = 0, worst = null;
@@ -172,10 +174,11 @@ for (const lv of levels) {
   if (!all.length) return;
   const STEP = 41; // 约每 41 关切一个，覆盖各难度
   const sampleIds = new Set();
-  all.forEach((lv, i) => { if (i % STEP === 0) sampleIds.add(lv.id); });
+  all.forEach((lv, i) => { if (lv.mover) return; if (i % STEP === 0) sampleIds.add(lv.id); });
   // 强制包含大地图代表（>800 格）与厚冰代表，确保极端关也能通关（各限量 4 个，控时）
   const bigRep = [], iceRep = [];
   all.forEach((lv) => {
+    if (lv.mover) return; // 移动卡关无 shapeMap，跳过（见下）
     GameGlobal.expandShapeRef(lv); // 引用版 → 完整 shapeMap（幂等，顺便缓存）
     const cells = lv.shapeMap.reduce((s, r) => s + r.replace(/\./g, '').length, 0);
     if (cells > 800) bigRep.push(lv.id);
@@ -188,6 +191,7 @@ for (const lv of levels) {
   console.log('\n[特殊关抽样] 抽验 ' + ids.length + ' 关（特殊关共 ' + (GameGlobal.SPECIAL_LEVELS || []).length + ' 关）');
   let fail = 0, totalMoves = 0, totalReshuffle = 0, wins = 0;
   for (const lv of ids) {
+    if (GameGlobal.getLevelConfig(lv).mover) continue; // 移动卡关：partner 只能与 mover 配对，autoSolve 不扩展，跳过抽验
     const g = new GameGlobal.Game(lv);
     const res = autoSolve(g, { moveCap: 6000, reshuffleCap: 300 });
     if (res.win) { wins++; totalMoves += res.moves; totalReshuffle += res.reshuffles; }

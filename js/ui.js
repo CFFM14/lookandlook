@@ -81,7 +81,7 @@
       Main.winData = null;
       Main.game.startIntro(); // 新玩法关：先全景后聚焦的入场镜头（旧关 cam=null 自动无操作）
       // 玩法说明弹窗：每次进入先关掉；若该关首次进入（未看过说明）则弹出并标记已看。
-      // 有特殊入场镜头的关卡（cam 存在 = 25/26 关）延迟到镜头结束后再弹，避免遮挡入场动画；旧关立即弹。
+      // 有特殊入场镜头的关卡（cam 存在 = 26/27 关）延迟到镜头结束后再弹，避免遮挡入场动画；旧关立即弹。
       Main.helpPopupOpen = false;
       Main.pendingHelp = false;
       if (!GameGlobal.Storage.isHelpSeen(levelId)) {
@@ -310,6 +310,13 @@
             Main.game = null;
           } else if (Main.gameFrom === 'special') UI.showSpecialHub();
           else UI.showLevelSelect();
+          break;
+        case 'lose_retry':
+          if (Main.game) Main.game.restart();
+          Main.page = 'game';
+          break;
+        case 'lose_home':
+          UI.showMenu();
           break;
         case 'win_home':
           UI.showMenu();

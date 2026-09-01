@@ -74,9 +74,10 @@ async function main() {
   check(typeof GameGlobal.PathChecker === 'object', 'PathChecker 已挂载');
   check(typeof GameGlobal.Game === 'function', 'Game 类已挂载');
   check(typeof GameGlobal.Main === 'object', 'Main 已挂载');
-  check(GameGlobal.LEVELS.length === 24, '24 个普通关卡（1~24 为手调普通关，25 起为特殊关）');
+  check(GameGlobal.LEVELS.length === 25, '25 个普通关卡（1~24 手调 + 25 移动卡关；26 起为特殊关）');
   check(GameGlobal.getLevelConfig(17) && GameGlobal.getLevelConfig(17).id === 17, '可获取第 17 关配置');
-  check(GameGlobal.LEVEL_LAYOUTS && Object.keys(GameGlobal.LEVEL_LAYOUTS).length === 24, '固定关卡数据 24 关（25/26 为形状棋盘运行时生成）');
+  check(GameGlobal.getLevelConfig(25) && GameGlobal.getLevelConfig(25).mover === true, '第 25 关为移动卡关');
+  check(GameGlobal.LEVEL_LAYOUTS && Object.keys(GameGlobal.LEVEL_LAYOUTS).length === 24, '固定关卡数据 24 关（第 25 关移动卡为运行时随机布局）');
 
   // 固定性：同一关两次开局，棋盘与冰冻位置必须完全一致
   {

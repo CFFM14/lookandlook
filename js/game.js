@@ -58,6 +58,8 @@
     // 会话号：restart / 重新开局后，旧定时器回调自动失效（防止切页后误触发结算）
     this._session = (this._session || 0) + 1;
     this._won = false;
+    this._lost = false;   // 移动卡飞出屏幕判负（游戏失败分支）
+    this.movers = [];     // 移动卡列表（mover 关，可多张）：浮动卡，不占 grid、不挡路、独立命中/绘制
     var rows = this.rows, cols = this.cols;
     this.grid = [];
     this.cardNodes = [];
@@ -87,6 +89,8 @@
 
     this.generateLayout();
     this.createCards();
+    // 移动卡关：随机抽一张卡成为移动卡（在冰冻之前；mover 关无冰冻）
+    if (this.cfg.mover) this._setupMover();
     if (this.cfg.frozenRatio > 0) this.applyFrozen(this.cfg.frozenRatio);
     // 新棋盘：离屏缓存失效，首帧（Main.game 已就位、metrics 正确）重建并烘焙，避免进场全程全量重绘
     if (GameGlobal.Renderer && GameGlobal.Renderer.invalidateBoardCache) GameGlobal.Renderer.invalidateBoardCache();
@@ -136,17 +140,62 @@
   /**
    * 连线判定入口：旧关走原 canConnect（行为 100% 不变）；
    * 新玩法关走泛化引擎（支持形状棋盘/分区的寻路，经典 2 折、不可穿透）。
+   *
+   * 移动卡（mover）实体挡路规则：
+   *   · mover 作为起点/终点：占位格临时填上目标类型（空起点过不了校验），坐标基准 = 视觉当前位置 `_moverCell`；
+   *   · 其他未消除 mover 的占位格 = 会动的墙（临时填 -1），路径不能穿过它 → 被挡的配对暂时消不了；
+   *   · ignoreMoverWall=true 时跳过墙（用于挡路提示判定/死局检测：mover 会动，挡路是暂时的，不算死局）。
+   * 寻路完成后立即恢复所有临时改动（仅影响本次判定）。
    */
-  Game.prototype.findConnectPath = function (cardA, cardB) {
-    if (!this.useNewEngine) {
-      return GameGlobal.PathChecker.canConnect(this.grid, this.rows, this.cols,
-        cardA.r, cardA.c, cardB.r, cardB.c);
+  Game.prototype.findConnectPath = function (cardA, cardB, ignoreMoverWall) {
+    var saved = []; // [r, c, 原值]
+    var placeA = this._isMover(cardA) ? this._moverCell(cardA) : null;
+    var placeB = this._isMover(cardB) ? this._moverCell(cardB) : null;
+
+    // 1) mover 起/终点：占位格临时填类型（过起点校验；坐标用视觉格）
+    if (placeA) {
+      saved.push([placeA.r, placeA.c, this.grid[placeA.r][placeA.c]]);
+      this.grid[placeA.r][placeA.c] = cardB.type;
     }
-    return GameGlobal.PathChecker.findPath(this.grid, this.rows, this.cols,
-      cardA.r, cardA.c, cardB.r, cardB.c, {
-        maxTurns: 2,
-        maxPierce: 0,
-      });
+    if (placeB) {
+      saved.push([placeB.r, placeB.c, this.grid[placeB.r][placeB.c]]);
+      this.grid[placeB.r][placeB.c] = cardA.type;
+    }
+
+    // 2) 实体挡路：其他未消除 mover 的占位格临时填障碍（-1 = 墙，路径不可穿过）
+    if (!ignoreMoverWall) {
+      for (var i = 0; i < this.movers.length; i++) {
+        var mv = this.movers[i];
+        if (mv === cardA || mv === cardB) continue;
+        if (mv.eliminated || mv.state === 'eliminating' || mv.state === 'eliminated') continue;
+        var cell = this._moverCell(mv);
+        if (this.grid[cell.r][cell.c] === 0) {
+          saved.push([cell.r, cell.c, 0]);
+          this.grid[cell.r][cell.c] = -1;
+        }
+      }
+    }
+
+    var rA = placeA ? placeA.r : cardA.r;
+    var cA = placeA ? placeA.c : cardA.c;
+    var rB = placeB ? placeB.r : cardB.r;
+    var cB = placeB ? placeB.c : cardB.c;
+
+    var path;
+    if (!this.useNewEngine) {
+      path = GameGlobal.PathChecker.canConnect(this.grid, this.rows, this.cols,
+        rA, cA, rB, cB);
+    } else {
+      path = GameGlobal.PathChecker.findPath(this.grid, this.rows, this.cols,
+        rA, cA, rB, cB, {
+          maxTurns: 2,
+          maxPierce: 0,
+        });
+    }
+    for (var s = saved.length - 1; s >= 0; s--) {
+      this.grid[saved[s][0]][saved[s][1]] = saved[s][2];
+    }
+    return path;
   };
 
   /** 会话安全定时器：restart/切关后旧回调自动失效 */
@@ -169,6 +218,53 @@
 
     var totalCards = this.rows * this.cols;
     var pairsNeeded = totalCards / 2;
+
+    // 移动卡关：不预留空格（棋盘满格），mover 占中心附近 n 格（grid=0，mover 视觉嵌那，靠玩家消除相邻卡解锁空间）。
+    // 每个 mover 类型只放 1 张 partner（场上唯一同类，只能与对应 mover 配对）；mover 类型互不相同，避免互配卡死。
+    if (this.cfg.mover) {
+      var moverTypes = this.cfg.moverTypes || [1, 2];
+      var n = moverTypes.length;
+      var others = [];
+      for (var t = 1; t <= this.cfg.fruitTypeCount; t++) {
+        if (moverTypes.indexOf(t) >= 0) continue;
+        others.push(t);
+      }
+      var types = moverTypes.slice(); // 每种 mover 类型 1 张 partner
+      var remPairs = pairsNeeded - n; // 其余类型对数
+      var base = Math.floor(remPairs / others.length);
+      var extra = remPairs - base * others.length;
+      for (var i = 0; i < others.length; i++) {
+        var nn = base + (i < extra ? 1 : 0);
+        for (var p = 0; p < nn; p++) types.push(others[i], others[i]);
+      }
+      this.shuffleArray(types);
+      // 中心附近 n 格给 mover：对角铺开（分开放，避免相邻），其余格子填满
+      var r0 = Math.floor(this.rows / 2), c0 = Math.floor(this.cols / 2);
+      var moverCells = [];
+      for (var mi = 0; mi < n; mi++) {
+        moverCells.push([r0 - 1 + mi * 2, c0 - 1 + mi * 2]); // 10×8 → (4,3) 与 (6,5) 对角分开
+      }
+      var fillCells = [];
+      for (var r2 = 1; r2 <= this.rows; r2++) {
+        for (var c2 = 1; c2 <= this.cols; c2++) {
+          var isMoverCell = false;
+          for (var k = 0; k < moverCells.length; k++) {
+            if (moverCells[k][0] === r2 && moverCells[k][1] === c2) { isMoverCell = true; break; }
+          }
+          if (isMoverCell) { this.grid[r2][c2] = 0; continue; }
+          fillCells.push([r2, c2]);
+        }
+      }
+      // 铺散摆放：同类尽量隔开，避免「一堆相同方块挨在一起」导致过于简单
+      // （只改空间分布、不改各类型份数，不影响可解性；partner 单张也按最近质心锚定）
+      var assign = this._spreadTypes(types, fillCells);
+      for (var k2 = 0; k2 < fillCells.length; k2++) {
+        this.grid[fillCells[k2][0]][fillCells[k2][1]] = assign[k2];
+      }
+      this._moverCells = moverCells;
+      this.remainingPairs = types.length / 2; // _setupMover 里 recompute 会按 partner 单卡重算
+      return;
+    }
 
     // 固定关卡：直接使用预生成布局（js/levels.js），保证每关打开都是同一副棋盘
     var fixed = GameGlobal.LEVEL_LAYOUTS && GameGlobal.LEVEL_LAYOUTS[this.levelId];
@@ -199,11 +295,14 @@
     }
 
     this.shuffleArray(types);
-    var idx = 0;
+    // 铺散摆放：同类尽量隔开，避免「一堆相同方块挨在一起」导致过于简单（只改空间分布，不影响可解性）
+    var cells2 = [];
     for (var r = 1; r <= this.rows; r++) {
-      for (var c = 1; c <= this.cols; c++) {
-        this.grid[r][c] = types[idx++];
-      }
+      for (var c = 1; c <= this.cols; c++) cells2.push([r, c]);
+    }
+    var assign2 = this._spreadTypes(types, cells2);
+    for (var k2 = 0; k2 < cells2.length; k2++) {
+      this.grid[cells2[k2][0]][cells2[k2][1]] = assign2[k2];
     }
     this.remainingPairs = pairsNeeded;
   };
@@ -295,13 +394,18 @@
   Game.prototype._spreadTypes = function (types, cells) {
     var n = cells.length;
     if (n === 0) return types;
-    // 统计每种类型份数
+    // 统计每种类型份数（注意：对象 key 会字符串化，需另存原值，避免数字类型被转成字符串）
     var counts = {};
-    for (var i = 0; i < types.length; i++) counts[types[i]] = (counts[types[i]] || 0) + 1;
+    var origVal = {};
+    for (var i = 0; i < types.length; i++) {
+      var key = String(types[i]);
+      counts[key] = (counts[key] || 0) + 1;
+      if (!(key in origVal)) origVal[key] = types[i];
+    }
     // 类型按份数降序（多份的先铺，保证充分散开）
     var typeList = [];
-    for (var t in counts) if (counts.hasOwnProperty(t)) typeList.push(t);
-    typeList.sort(function (a, b) { return counts[b] - counts[a]; });
+    for (var t in counts) if (counts.hasOwnProperty(t)) typeList.push(origVal[t]);
+    typeList.sort(function (a, b) { return counts[String(b)] - counts[String(a)]; });
     // 复制队列：每种类型按其份数入队
     var queue = [];
     for (var q = 0; q < typeList.length; q++) {
@@ -367,6 +471,219 @@
         this.cardNodes[r][c] = card;
       }
     }
+  };
+
+  // ══════════════════════════════════════════════
+  //  移动卡（mover）：第 25 关「逃逸的移动卡」
+  //  开局静止嵌在棋盘；主轴方向（水平）的走廊墙卡被消除 → 走廊变宽 → 开始往复，
+  //  行程随走廊扩展变长；所在行完全清空 → 单向滑出屏幕 → 完全出屏判负（onLose）。
+  //  mover 是浮动卡：不占 grid、不在 cardNodes、不挡路、独立命中/绘制。
+  // ══════════════════════════════════════════════
+
+  /** 初始化移动卡：在中心预留格创建 n 张 mover（类型 = cfg.moverTypes，各自占一格，不占 grid）。
+   *  场上每种 mover 类型只有 1 张 partner（唯一同类，只能与对应 mover 配对消除）。 */
+  Game.prototype._setupMover = function () {
+    var moverTypes = this.cfg.moverTypes || [1, 2];
+    var cells = this._moverCells || [];
+    this.movers = [];
+    for (var i = 0; i < moverTypes.length; i++) {
+      var pr = cells[i] ? cells[i][0] : Math.floor(this.rows / 2) + (i % 2);
+      var pc = cells[i] ? cells[i][1] : Math.floor(this.cols / 2) + Math.floor(i / 2);
+      var px = this.logicToPixel(pr, pc);
+      this.movers.push({
+        r: pr, c: pc, type: moverTypes[i],
+        state: 'normal',
+        baseX: px.x, baseY: px.y,
+        visual: { x: px.x, y: px.y, scale: 1, iceAlpha: 0 },
+        zone: 0,
+        isMover: true,        // 渲染标记：红色薄边框，让玩家一眼认出会移动的那张卡
+        moving: false,        // 是否已开始移动（开局静止，消除相邻卡后朝解锁方向启动）
+        dr: 0, dc: 0,         // 当前运动方向（单位向量，上/下/左/右）
+        vx: 0, vy: 0,         // 当前速度（px/s）
+        paused: false,        // 玩家点击选中时暂停移动（给思考时间；取消选中/配对失败恢复）
+        hesitateLeft: 0,      // 跑到出口准备溜走时的"犹豫"剩余毫秒（停顿预警，给玩家最后机会点住它）
+        flying: false,        // 前方无阻挡直通棋盘边缘 → 单向滑出屏幕（出屏判负）
+        eliminated: false,    // 已被配对消除（一次性目标，不再出现）
+      });
+      this.grid[pr][pc] = 0;
+      this.cardNodes[pr][pc] = null;
+    }
+    this.recomputeRemainingPairs();
+  };
+
+  /** 某卡是否为移动卡（任一 mover） */
+  Game.prototype._isMover = function (card) {
+    var arr = this.movers;
+    for (var i = 0; i < arr.length; i++) if (arr[i] === card) return true;
+    return false;
+  };
+
+  /** 某类型是否为未消除 mover 的类型（用于单例/洗牌保护 partner） */
+  Game.prototype._isMoverType = function (type) {
+    var arr = this.movers;
+    for (var i = 0; i < arr.length; i++) {
+      if (!arr[i].eliminated && arr[i].type === type) return true;
+    }
+    return false;
+  };
+
+  /** 把寻路路径中 mover 端（path[0]：findConnectPath 以 mover 为起点）换成实时像素点，
+   *  让连线/提示线端点对准移动卡当前实际位置（drawConnectionLine 支持 {x,y} 像素点）。 */
+  Game.prototype._pathWithMoverPos = function (path, mover) {
+    var pts = path.slice();
+    if (pts.length) pts[0] = { x: mover.visual.x, y: mover.visual.y };
+    return pts;
+  };
+
+  /** mover 视觉当前位置压着的逻辑格 {r,c}（实体挡路/配对基准都用它，移动中也能精确到所在格） */
+  Game.prototype._moverCell = function (mover) {
+    var m = this.metrics;
+    var r = Math.round((mover.visual.y - m.oy - m.ch / 2) / (m.ch + m.gy)) + 1;
+    var c = Math.round((mover.visual.x - m.ox - m.cw / 2) / (m.cw + m.gx)) + 1;
+    return { r: Math.max(1, Math.min(this.rows, r)), c: Math.max(1, Math.min(this.cols, c)) };
+  };
+
+  /** (r,c) 是否被某张未消除的 mover 占据（exclude 排除自身，用于移动卡互撞检测） */
+  Game.prototype._moverAtCell = function (r, c, exclude) {
+    for (var i = 0; i < this.movers.length; i++) {
+      var mv = this.movers[i];
+      if (mv === exclude) continue;
+      if (mv.eliminated || mv.state === 'eliminating' || mv.state === 'eliminated') continue;
+      var cell = this._moverCell(mv);
+      if (cell.r === r && cell.c === c) return mv;
+    }
+    return null;
+  };
+
+  /** 移动卡是否正停在出口"犹豫"（准备溜走前的预警期，渲染层据此高亮警示） */
+  Game.prototype._moverHesitating = function (mover) {
+    return !!(mover && !mover.flying && mover.hesitateLeft > 0);
+  };
+
+  /** mover 上下左右任一相邻格是否为解锁出的空格（其他 mover 的占位格不算），返回方向 {dr,dc} 或 null */
+  Game.prototype._firstEmptyNeighborDir = function (mover) {
+    var dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    for (var i = 0; i < 4; i++) {
+      var r = mover.r + dirs[i][0], c = mover.c + dirs[i][1];
+      if (r < 1 || r > this.rows || c < 1 || c > this.cols) continue;
+      if (this.grid[r][c] !== 0) continue;
+      // 该空格若是另一张 mover 的占位格，不算"玩家消除解锁"
+      var isOtherMover = false;
+      for (var k = 0; k < this.movers.length; k++) {
+        if (this.movers[k] !== mover && this.movers[k].r === r && this.movers[k].c === c) {
+          isOtherMover = true; break;
+        }
+      }
+      if (!isOtherMover) return { dr: dirs[i][0], dc: dirs[i][1] };
+    }
+    return null;
+  };
+
+  /** 命中设计坐标 (x, y) 的 mover（main.handleTap 优先于棋盘 hitTest 检测），返回 mover 或 null */
+  Game.prototype.hitTestMover = function (x, y) {
+    var m = this.metrics;
+    for (var i = 0; i < this.movers.length; i++) {
+      var mover = this.movers[i];
+      if (mover.state === 'eliminating' || mover.state === 'eliminated') continue;
+      if (Math.abs(x - mover.visual.x) <= m.cw / 2 &&
+          Math.abs(y - mover.visual.y) <= m.ch / 2) {
+        return mover;
+      }
+    }
+    return null;
+  };
+
+  /** 每帧驱动所有 mover（挂 Main.update，dt 单位 ms）
+   *  规则：朝解锁方向逐格移动（上下左右皆可）；前方有卡 → 反弹（反方向空则转，前后都堵则原地等待）；
+   *        前方直通棋盘边缘（无卡阻挡）→ 单向滑出屏幕，完全出屏判负（onLose）。 */
+  Game.prototype.updateMover = function (dt) {
+    if (this._won || this._lost) return;
+    var m = this.metrics;
+    var cfg = GameGlobal.MOVER_CFG || { speed: 35, escapeSpeed: 35 };
+    for (var i = 0; i < this.movers.length; i++) {
+      var mover = this.movers[i];
+      if (mover.eliminated || mover.state === 'eliminating' || mover.state === 'eliminated') continue;
+      if (mover.paused) continue; // 玩家点击选中时暂停，给思考时间
+
+      // 未启动：上下左右任一相邻格被消除 → 朝该解锁方向启动
+      if (!mover.moving) {
+        var d = this._firstEmptyNeighborDir(mover);
+        if (!d) continue;
+        mover.moving = true;
+        mover.dr = d.dr;
+        mover.dc = d.dc;
+      }
+
+      // 飞出模式：前方直通棋盘边缘 → 直线滑出屏幕；完全出屏判负
+      if (mover.flying) {
+        mover.visual.x += mover.vx * dt / 1000;
+        mover.visual.y += mover.vy * dt / 1000;
+        if (mover.visual.x < -m.cw || mover.visual.x > GameGlobal.DESIGN_W + m.cw ||
+            mover.visual.y < -m.ch || mover.visual.y > GameGlobal.DESIGN_H + m.ch) {
+          this.onLose();
+          return;
+        }
+        continue;
+      }
+
+      // 前方格（沿当前方向）
+      var nr = mover.r + mover.dr, nc = mover.c + mover.dc;
+      if (nr < 1 || nr > this.rows || nc < 1 || nc > this.cols) {
+        // 前方直通棋盘边缘 → 先在出口"犹豫"片刻（预警 + 给玩家最后机会点住它），再单向滑出屏幕。
+        // 用剩余毫秒倒计时：暂停/思考期间不流逝（玩家点住它时可以从容决定）。
+        if (!mover.hesitateLeft) mover.hesitateLeft = cfg.hesitate || 800;
+        mover.hesitateLeft -= dt;
+        if (mover.hesitateLeft > 0) continue;
+        mover.hesitateLeft = 0;
+        mover.flying = true;
+        mover.vx = mover.dc * cfg.escapeSpeed;
+        mover.vy = mover.dr * cfg.escapeSpeed;
+        continue;
+      }
+      // 前方被其他移动卡占据（实体碰撞：两卡不会重叠；撞上则主动方反弹，被撞方方向不变）
+      var hitMover = this._moverAtCell(nr, nc, mover);
+      if (hitMover || this.grid[nr][nc] !== 0) {
+        // 前方有卡 / 有移动卡 → 尝试反弹（反方向空则转向）；前后都堵则原地等待新解锁
+        var ndr = -mover.dr, ndc = -mover.dc;
+        var bnr = mover.r + ndr, bnc = mover.c + ndc;
+        if (bnr >= 1 && bnr <= this.rows && bnc >= 1 && bnc <= this.cols &&
+            this.grid[bnr][bnc] === 0 && !this._moverAtCell(bnr, bnc, mover)) {
+          mover.dr = ndr; mover.dc = ndc;
+        }
+        continue;
+      }
+
+      // 前方畅通：向目标格中心匀速移动
+      mover.vx = mover.dc * cfg.speed;
+      mover.vy = mover.dr * cfg.speed;
+      var tx = this.logicToPixel(nr, nc).x;
+      var ty = this.logicToPixel(nr, nc).y;
+      var dx = tx - mover.visual.x, dy = ty - mover.visual.y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      var step = cfg.speed * dt / 1000;
+      if (dist <= step) {
+        mover.visual.x = tx;
+        mover.visual.y = ty;
+        mover.r = nr;
+        mover.c = nc;
+      } else {
+        mover.visual.x += (dx / dist) * step;
+        mover.visual.y += (dy / dist) * step;
+      }
+    }
+  };
+
+  /** 失败：移动卡完全飞出屏幕（游戏首个失败分支；_session 守卫 restart 后失效） */
+  Game.prototype.onLose = function () {
+    if (this._lost || this._won) return;
+    this._lost = true;
+    this.isProcessing = true;
+    GameGlobal.SoundManager.play('fail');
+    var self = this;
+    var levelId = this.levelId;
+    this._after(600, function () {
+      GameGlobal.Main.showLose(levelId);
+    });
   };
 
   /** 随机冻结 k 张卡片（尽量不相邻） */
@@ -446,6 +763,12 @@
     var card = this.cardNodes[r][c];
     if (!card || card.state === 'eliminated') return;
 
+    // 移动卡：已选 mover 时，点击场上卡即与 mover 配对
+    if (this._isMover(this.selectedCard)) {
+      this.tryEliminateMover(this.selectedCard, card);
+      return;
+    }
+
     // 所有卡片（含奇数残留卡）均可正常选中配对；最后多出的单张在剩余对清完后自动消除
     if (!this.selectedCard) {
       this.selectedCard = card;
@@ -483,9 +806,118 @@
       if (path) {
         this.eliminatePair(first, card, path);
       } else {
+        // 实体挡路：无视 mover 墙能通则说明被移动卡挡住（mover 会动，等它移开即可消）
+        if (this.movers.length && this.findConnectPath(first, card, true)) {
+          GameGlobal.Main.showToast('被移动卡挡住了，等它移开或先消掉它');
+        }
         this.showMismatch(first, card);
       }
     }
+  };
+
+  /** 玩家点击移动卡（main.handleTap 命中 mover 时调用）：选中/取消/与已选卡配对。
+   *  点中即暂停移动（给玩家思考时间）；取消选中恢复。 */
+  Game.prototype.onTapMover = function (mover) {
+    if (this.isProcessing) return;
+    if (!mover || mover.eliminated || mover.state === 'eliminating' || mover.state === 'eliminated') return;
+    mover.paused = true; // 点中移动卡 → 暂停移动
+    if (!this.selectedCard) {
+      this.selectedCard = mover;
+      mover.state = 'selected';
+      this.highlightCard(mover, true);
+      GameGlobal.SoundManager.play('select');
+    } else if (this.selectedCard === mover) {
+      mover.state = 'normal';
+      this.highlightCard(mover, false);
+      mover.paused = false; // 取消选中 → 恢复移动
+      this.selectedCard = null;
+      GameGlobal.SoundManager.play('select');
+    } else {
+      // 已选场上卡 → 与 mover 配对（配对成功 mover 消失；失败在 tryEliminateMover 内恢复移动）
+      this.tryEliminateMover(mover, this.selectedCard);
+    }
+  };
+
+  /** mover 与场上卡配对：类型校验 + 2 折路径（基准 = mover 当前逻辑格）。
+   *  配对瞬间冻结 mover（暂停），连线/特效对准其实际所在点；失败恢复移动。 */
+  Game.prototype.tryEliminateMover = function (mover, card) {
+    if (!mover || mover.eliminated || mover.state === 'eliminating' || mover.state === 'eliminated') return;
+    if (!card || card.state === 'eliminated') return;
+
+    mover.paused = true; // 冻结当前位置，避免判定/连线时它还在动
+    this.isProcessing = true;
+    if (mover.type !== card.type) {
+      mover.paused = false; // 配对失败 → 恢复移动
+      this.showMismatch(mover, card);
+      return;
+    }
+    // 分区隔离（mover 关恒 false，保留防御）
+    if (this.zoneIsolated() && mover.zone !== card.zone) {
+      var zn = GameGlobal.ZONE_NAMES || [];
+      GameGlobal.Main.showToast('不同区域的卡片不能互消（' +
+        (zn[mover.zone] || '') + ' ≠ ' + (zn[card.zone] || '') + '）');
+      mover.paused = false; // 配对失败 → 恢复移动
+      this.showMismatch(mover, card);
+      return;
+    }
+    // 路径基准：直接传 mover 本身（findConnectPath 内部处理空起点 + clamp；mover.r/c 恒在棋盘内）
+    var path = this.findConnectPath(mover, card);
+    if (path) {
+      this.eliminateMoverPair(mover, card, path);
+    } else {
+      mover.paused = false; // 配对失败 → 恢复移动
+      // 实体挡路：无视 mover 墙能通则说明被移动卡挡住（等它移开即可消）
+      if (this.findConnectPath(mover, card, true)) {
+        GameGlobal.Main.showToast('被移动卡挡住了，等它移开或先消掉它');
+      }
+      this.showMismatch(mover, card);
+    }
+  };
+
+  /** 消除 mover + 场上同类（普通配对流程；mover 不占 grid，无需清格） */
+  Game.prototype.eliminateMoverPair = function (mover, card, path) {
+    var self = this;
+
+    // 连线端点用 mover 实时像素位置（配对瞬间已暂停冻结），消除特效/连线对准实际所在点
+    this.connectionLine = { points: this._pathWithMoverPos(path, mover), color: 'gold', timeLeft: T.ELIM_LINE };
+    GameGlobal.SoundManager.play('elim');
+    // 注：消除不再让其他 mover 刹车（每次消除都顿一下太打断节奏）；
+    // 改为"出口犹豫"——只有它真跑到边缘要溜时才停顿预警（见 updateMover）。
+
+    // 普通卡（partner）消除
+    this.grid[card.r][card.c] = 0;
+    this.cardNodes[card.r][card.c] = null;
+    this.frozen[card.r][card.c] = 0;
+    this.singletonSet.delete(card.r + ',' + card.c);
+    var p = this.logicToPixel(card.r, card.c);
+    card.state = 'eliminating';
+    GameGlobal.Renderer.spawnFirework(p.x, p.y);
+    GameGlobal.Tween.to(card.visual, { scale: 0 }, T.ELIM_SCALE, 'easeIn', function () {
+      card.state = 'eliminated';
+    });
+
+    // mover 消除（延迟 100ms 错开）
+    this._after(100, function () {
+      mover.state = 'eliminating';
+      mover.eliminated = true;
+      GameGlobal.Renderer.spawnFirework(mover.visual.x, mover.visual.y);
+      GameGlobal.Tween.to(mover.visual, { scale: 0 }, T.ELIM_SCALE, 'easeIn', function () {
+        mover.state = 'eliminated';
+      });
+    });
+
+    this._after(T.ELIM_LINE + 20, function () {
+      if (self.connectionLine && self.connectionLine.color === 'gold') self.connectionLine = null;
+    });
+
+    this._after(T.ELIM_TOTAL, function () {
+      self.selectedCard = null;
+      self.isProcessing = false;
+      self.moves++;
+      self.recomputeRemainingPairs();
+      self.recomputeSingletons();
+      self.afterEliminate();
+    });
   };
 
   /**
@@ -529,6 +961,7 @@
     // 连线（金色）+ 音效马上响
     this.connectionLine = { points: path, color: 'gold', timeLeft: T.ELIM_LINE };
     GameGlobal.SoundManager.play('elim');
+    // 注：消除不再让 mover 刹车（保持消除节奏流畅）
 
     // ── 破冰保留的卡：冰裂动画，卡片留在棋盘变普通卡 ──
     if (keep1) {
@@ -666,6 +1099,10 @@
       if (!byKey.hasOwnProperty(t)) continue;
       var list = byKey[t];
       if (list.length === 1) {
+        // 移动卡关：mover 未消除时保护其唯一同类（partner），不能被单例机制自动消
+        if (this.movers.length && this._isMoverType(list[0].type)) {
+          continue;
+        }
         this.clearSingletonImmediately(list[0]);
       }
     }
@@ -1009,7 +1446,11 @@
     for (var r = 1; r <= this.rows; r++) {
       for (var c = 1; c <= this.cols; c++) {
         var card = this.cardNodes[r][c];
-        if (card && card.state !== 'eliminated') cards.push(card);
+        if (card && card.state !== 'eliminated') {
+          // 移动卡关：partner（mover 唯一同类）固定不参与洗牌，保证 mover 始终可配对
+          if (this.movers.length && this._isMoverType(card.type)) continue;
+          cards.push(card);
+        }
       }
     }
     if (cards.length < 2) return;
@@ -1052,6 +1493,24 @@
       }
     }
 
+    // 移动卡关：优先提示 mover 与同类的通路，避免玩家忘了处理它
+    if (this.movers.length) {
+      for (var mi = 0; mi < this.movers.length; mi++) {
+        var mv = this.movers[mi];
+        if (mv.eliminated || mv.state === 'eliminating' || mv.state === 'eliminated') continue;
+        for (var mj = 0; mj < cards.length; mj++) {
+          if (cards[mj].type === mv.type) {
+            var mpath = this.findConnectPath(mv, cards[mj]);
+            if (mpath) {
+              GameGlobal.SoundManager.play('hint');
+              this.showHintLine(mpath, mv, cards[mj]);
+              return;
+            }
+          }
+        }
+      }
+    }
+
     var byKey = {};
     for (var i = 0; i < cards.length; i++) {
       var cd = cards[i];
@@ -1074,11 +1533,19 @@
         }
       }
     }
+    // 实体挡路：当前无直通配对，但无视 mover 墙存在可消配对 → 提示等它移开，不是真死局
+    if (this.movers.length && this._findAnyValidMove(false)) {
+      GameGlobal.Main.showToast('有配对被移动卡挡住了，等它移开再试');
+      return;
+    }
     GameGlobal.Main.showToast('没有可消除的配对，试试打乱或炸弹吧');
   };
 
   Game.prototype.showHintLine = function (path, card1, card2) {
-    this.connectionLine = { points: path, color: 'blue', timeLeft: T.HINT_LINE };
+    // 移动卡提示：线头对准 mover 实时位置（card1 为 mover 时替换 path[0]）
+    var pts = path;
+    if (this._isMover(card1)) pts = this._pathWithMoverPos(path, card1);
+    this.connectionLine = { points: pts, color: 'blue', timeLeft: T.HINT_LINE };
     card1.state = 'hintFlash';
     card2.state = 'hintFlash';
     card1.flashT = Date.now();
@@ -1095,13 +1562,20 @@
   //  胜利检查 & 死局 & 单例
   // ══════════════════════════════════════════════
 
-  /** 是否至少存在一对可连接的配对（冰块可配普卡/冰卡，分区隔离时按 类型+分区 分组） */
-  Game.prototype.hasValidMove = function () {
+  /** 是否存在可消除配对。ignoreMoverWall=true 时无视移动卡墙（mover 会动，挡路是暂时的，不算死局）。 */
+  Game.prototype._findAnyValidMove = function (ignoreMoverWall) {
     var cards = [];
     for (var r = 1; r <= this.rows; r++) {
       for (var c = 1; c <= this.cols; c++) {
         var card = this.cardNodes[r][c];
         if (card && card.state !== 'eliminated') cards.push(card);
+      }
+    }
+    // 移动卡关：mover 未消除时也算一张可配对卡（检查其与同类的通路）
+    for (var mi = 0; mi < this.movers.length; mi++) {
+      var mv = this.movers[mi];
+      if (!mv.eliminated && mv.state !== 'eliminating' && mv.state !== 'eliminated') {
+        cards.push(mv);
       }
     }
     var byKey = {};
@@ -1115,13 +1589,18 @@
       if (same.length < 2) continue;
       for (var a = 0; a < same.length; a++) {
         for (var b = a + 1; b < same.length; b++) {
-          if (this.findConnectPath(same[a], same[b])) {
+          if (this.findConnectPath(same[a], same[b], ignoreMoverWall)) {
             return true;
           }
         }
       }
     }
     return false;
+  };
+
+  /** 死局检测：mover 挡路不算死局（它一直在动，迟早让路） */
+  Game.prototype.hasValidMove = function () {
+    return this._findAnyValidMove(true);
   };
 
   Game.prototype.checkWinOrAutoClear = function () {
@@ -1150,6 +1629,15 @@
   /** 死局：自动消除所有剩余卡片 */
   Game.prototype.autoClearAllRemaining = function () {
     var self = this;
+    // 移动卡兜底：死局清盘时 mover 一并消失，避免残留浮动卡
+    // 移动卡兜底：所有未消除 mover 一并消失，避免残留浮动卡
+    for (var mi = 0; mi < this.movers.length; mi++) {
+      var mv = this.movers[mi];
+      if (!mv.eliminated) {
+        mv.eliminated = true;
+        mv.state = 'eliminated';
+      }
+    }
     var toClear = [];
     for (var r = 1; r <= this.rows; r++) {
       for (var c = 1; c <= this.cols; c++) {
@@ -1225,6 +1713,15 @@
   Game.prototype.onWin = function () {
     if (this._won) return;
     this._won = true;
+    // 移动卡兜底：正常通关前 mover 必须已消除（partner 残留检查拦截），死局清盘场景已在上游处理
+    // 移动卡兜底：所有未消除 mover 一并消失，避免残留浮动卡
+    for (var mi = 0; mi < this.movers.length; mi++) {
+      var mv = this.movers[mi];
+      if (!mv.eliminated) {
+        mv.eliminated = true;
+        mv.state = 'eliminated';
+      }
+    }
     GameGlobal.SoundManager.play('win');
     GameGlobal.SoundManager.play('coin');
     // 按关卡类别解锁下一关：普通关走 unlockNextLevel，特殊关走 unlockNextSpecial（顺序解锁）

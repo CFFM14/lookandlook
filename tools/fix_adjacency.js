@@ -140,7 +140,9 @@ function main() {
 
   for (let id = 1; id <= GameGlobal.TOTAL_LEVELS; id++) {
     const cfg = GameGlobal.getLevelConfig(id);
-    const g0 = layouts[id].g.slice();
+    const lay = layouts[id];
+    if (!lay) continue; // 无固定布局的关（如第 25 关移动卡，运行时随机布局）跳过
+    const g0 = lay.g.slice();
     const before = adjacency(g0);
     const diag = DIAGONAL.has(cfg.gravity);
 

@@ -74,6 +74,10 @@ GameGlobal.GRID_MARGIN_X = 12;    // 网格左右留白
 // 0.12 ≈ 卡片边长 12% 被相邻卡片覆盖（比 0.18 略宽松一丁点）；连线的外围通道逻辑不受影响。
 GameGlobal.GRID_OVERLAP_RATIO = 0.12;
 
+/** 移动卡（mover）关卡参数：speed=移动速度，escapeSpeed=飞出滑行速度（px/s，越小越容易点中），
+ *  hesitate=跑到出口准备溜走前的"犹豫"停顿毫秒（预警 + 给玩家最后机会点住它） */
+GameGlobal.MOVER_CFG = { speed: 35, escapeSpeed: 35, hesitate: 900 };
+
 /** 水果名称（与 images/fruit_01~12.png 一一对应） */
 GameGlobal.FRUIT_NAMES = [
   '柚子', '桃子', '梨子', '橘子', '紫葡萄', '红苹果',
@@ -119,12 +123,13 @@ GameGlobal.ZONE_NAMES = ['左区', '右区', '中区', '四区', '五区', '六�
  * 第 17~20 关为 4 个斜向（对角线）重力演示关「对角坠果」（消除后水果分别滑向 右下/左下/右上/左上 角）。
  * 不再自动生成 17~576 的随机关卡。
  */
-/** 特殊关卡（手调形状演示关）：第 25 关展翅雄鹰、第 26 关心心相印。
- *  固定排在「特殊关卡」列表最前（id 25/26），后面接 gen_levels.js 生成的注水关（id 从 27 起）。
+/** 特殊关卡（手调形状演示关）：第 27 关展翅雄鹰、第 26 关心心相印。
+ *  固定排在「特殊关卡」列表最前（id 27/26），后面接 gen_levels.js 生成的注水关（id 从 28 起）。
+ *  注：id 25 已被普通关第 25 关「逃逸的移动卡」（移动卡玩法）占用，雄鹰改占 27 号避免 getLevelConfig 冲突。
  *  _category 由 getLevelConfig 命中时打标；这里只放纯配置。 */
 var SPECIAL_HANDBOOK = [
   {
-    id: 25,
+    id: 27,
     name: '展翅雄鹰',
     desc: '分区棋盘：左翅12种蔬菜·右翅12种水果·中间混合（全24种上阵）',
     difficulty: 5,
@@ -412,12 +417,24 @@ GameGlobal.LEVELS = (function () {
     gravity: 'upLeft', frozenRatio: 0.3,
     hintEnabled: true, bombEnabled: true, shuffleEnabled: true,
   });
+  levels.push({
+    // 第25关【逃逸的移动卡】：棋盘上有 2 张会移动的卡片（柚子/桃子，红框标识），找到并消除它们的同类，别让它们飞出屏幕！
+    // 布局：不预留空格（棋盘满格），mover 占中心 2 格；mover 类型各只 1 张 partner（场上唯一同类）；炸弹禁用保护 partner。
+    id: 25,
+    name: '逃逸的移动卡',
+    desc: '有两张卡片会自己移动，找到并消除它们的同类，别让它们飞出屏幕！',
+    difficulty: 2,
+    rows: 10, cols: 8, fruitTypeCount: 12,
+    gravity: null, frozenRatio: 0,
+    mover: true, moverTypes: [1, 2],
+    hintEnabled: true, bombEnabled: false, shuffleEnabled: true,
+  });
 
   return levels;
 })();
 
 GameGlobal.TOTAL_LEVELS = GameGlobal.LEVELS.length;
-// 特殊关卡：25/26 手调形状关 在前，gen_levels.js 生成的注水关（id 从 27 起）在后，统一顺序解锁
+// 特殊关卡：27(雄鹰)/26(心形) 手调形状关 在前，gen_levels.js 生成的注水关（id 从 28 起，27 留作雄鹰）在后，统一顺序解锁
 require('./special_levels.js');
 GameGlobal.SPECIAL_LEVELS = SPECIAL_HANDBOOK.concat(GameGlobal.SPECIAL_LEVELS || []);
 GameGlobal.TOTAL_SPECIAL = GameGlobal.SPECIAL_LEVELS.length;
@@ -558,6 +575,10 @@ GameGlobal.getLevelHelp = function (cfg) {
     lines.push('层层消消：牌一层层叠起来，只能点最顶层（没被压住的）的牌。');
     lines.push('选中两张最顶层的同色牌即可消除，不要求路径连通——层，就是新的限制。');
     lines.push('层数越深越难：下层被压住，要先消掉上层才能动它。');
+  }
+  if (cfg.mover) {
+    lines.push('移动卡：棋盘上有张会来回移动的卡片，找到并消除它的同类即可。');
+    lines.push('它两侧的卡片被消除后它开始移动；所在行被清空后它会飞向屏幕外——务必在出屏前消掉它！');
   }
 
   var typeCount = cfg.fruitTypeCount || 12;

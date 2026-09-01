@@ -382,6 +382,12 @@
           var tile = this.game.hitTest(d.x, d.y);
           if (tile) this.game.onTapTile(tile);
         } else {
+          // 移动卡（mover）优先命中：浮动在最上层（hitTestMover 返回命中的那张 mover）
+          var mv = this.game.hitTestMover(d.x, d.y);
+          if (mv) {
+            this.game.onTapMover(mv);
+            return;
+          }
           var cell = this.game.hitTest(d.x, d.y);
           if (cell) this.game.onTapCard(cell.r, cell.c);
         }
@@ -405,6 +411,16 @@
         this.helpPopupOpen = true;
         this.pendingHelp = false;
       }
+    },
+
+    /** 显示失败结算（game.onLose 调用：移动卡飞出屏幕） */
+    showLose: function (levelId) {
+      // 守卫：失败回调延迟弹出，若玩家已离开游戏页（返回/切关）则忽略
+      if (this.page !== 'game') return;
+      this.helpPopupOpen = false; // 失败时关闭玩法说明弹窗，避免覆盖结算面板
+      this.loseData = { levelId: levelId };
+      this.loseShownAt = Date.now();
+      this.page = 'lose';
     },
 
     /** 显示胜利结算（game.onWin 调用） */
@@ -438,6 +454,10 @@
     update: function (dt) {
       Tween.update(dt);
       GameGlobal.Renderer.updateParticles(dt);
+      // 移动卡（mover）每帧驱动：仅游戏页内运行（离开游戏页自动停）
+      if (this.page === 'game' && this.game && this.game.updateMover) {
+        this.game.updateMover(dt);
+      }
     },
 
     render: function () {
@@ -458,6 +478,7 @@
         case 'shop': r.renderShop(); break;
         case 'game': r.renderGame(); break;
         case 'win': r.renderWin(); break;
+        case 'lose': r.renderLose(); break;
       }
 
       // 游戏内“玩法说明”弹窗（仅在游戏页且打开时绘制，覆盖在游戏画面上方）

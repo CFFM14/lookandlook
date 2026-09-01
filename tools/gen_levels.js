@@ -2,17 +2,17 @@
 /**
  * tools/gen_levels.js —— 形状棋盘批量「注水」关卡生成器
  *
- * 目标：1~24 为手调普通关（js/config.js 的 HANDBOOK）；本生成器把所有「特殊关卡」批量产出，
+ * 目标：1~25 为手调普通关（js/config.js 的 HANDBOOK，含第 25 关「逃逸的移动卡」）；本生成器把所有「特殊关卡」批量产出，
  *       靠「形状 × 尺寸 × 分区模式 × 卡组 × 冰档」系统化组合，让特殊关也破千、总关卡 ≥ 1000。
  *
  * 维度：
- *   · 形状：SHAPES 25 个手工图案（排除 eagle，雄鹰作为第 25 关独家手调）
+ *   · 形状：SHAPES 25 个手工图案（排除 eagle，雄鹰作为第 27 关独家手调）
  *   · 尺寸：scale k ∈ {1,2,3}（放大后总格数 > MAX_CELLS 则跳过该尺寸，避免真机卡顿）
  *   · 分区模式：single（单区）/ lr（左右分区，左果右蔬）/ tb（上下分区，上果下蔬）
  *   · 卡组（仅单区）：fruit（全盘水果）/ veg（全盘蔬菜）/ mixed（果蔬混合 24 种）
  *   · 冰档：0 / 0.2 / 0.3（形状关冰冻按同类型两两配对，保证可解）
  *
- * 可解性保证（全部复用 game.js 现有机制，已在 25/26 关实证）：
+ * 可解性保证（全部复用 game.js 现有机制，已在 26/27 关实证）：
  *   · 每分区 _zoneTypeList 保证池内每种至少一对；_spreadTypes 铺散避免同型扎堆；
  *   · 奇数格补孤卡，结算前 singleton 机制自动收掉，不卡关；
  *   · 大棋盘(>400格)用 viewport 大地图（双指缩放/单指平移）。
@@ -22,8 +22,8 @@
  *
  * 运行：node tools/gen_levels.js
  *
- * 说明：1~24 为手调普通关（不在本文件内）；本文件产出「特殊关卡」的所有生成关（id 从 27 起、按难度平滑递进）。
- *       它们与 config.js 里的 25/26 手调形状关一起，统一在「特殊关卡」玩法里顺序解锁。
+ * 说明：1~25 为手调普通关（不在本文件内，含第 25 关移动卡）；本文件产出「特殊关卡」的所有生成关（id 从 28 起、按难度平滑递进）。
+ *       它们与 config.js 里的 26/27 手调形状关（心形/雄鹰）一起，统一在「特殊关卡」玩法里顺序解锁。
  *       想再加不同玩法（不同 id 段/规则），直接往 SPECIAL_LEVELS 数组按规则追加即可（见 config.js 的 SPECIAL_HANDBOOK）。
  */
 const fs = require('fs');
@@ -37,7 +37,7 @@ const shapeNames = G.shapeNames;
 const MAX_CELLS = 2100;          // 放大后总格数上限（15 列原型 k=3 放大为 45x45=2025 格，保留「巨」档以保 1000+ 关；真机若「巨」档明显卡顿再收紧）
 const EXCLUDE = new Set(['eagle']); // 雄鹰作为第 25 关独家手调，不进入注水池
 const FROZEN = [0, 0.2, 0.3];
-const START_ID = 27;             // 生成关 id 起点（1~24 为手调普通关，25/26 为手调特殊关）
+const START_ID = 28;             // 生成关 id 起点（1~25 为手调普通关含移动卡关，26/28+ 为特殊关；27 被移动卡关占用，故从 28 起）
 
 const SHAPE_CN = {
   heart: '爱心', star: '星星', circle: '圆', diamond: '菱形', triangle: '三角',
@@ -146,7 +146,9 @@ for (const name of names) {
   }
 }
 
-// ── 难度平滑排序，再分配 id（从 27 起连续）──
+// ── 难度平滑排序，再分配 id（从 28 起连续）──
+// （require.main 保护：仅命令行直接运行时执行生成/写文件；被其他脚本 require 时不触发任何副作用）
+if (require.main === module) {
 allPool.sort((a, b) => (a.score - b.score) || a.name.localeCompare(b.name));
 let id = START_ID;
 const specialLevels = allPool.map(s => { const lv = s.lv; lv.id = id++; return lv; });
@@ -154,10 +156,12 @@ const specialLevels = allPool.map(s => { const lv = s.lv; lv.id = id++; return l
 // ── 输出 js/special_levels.js ──
 function emitSpecial(target, levels) {
   const lines = [];
-  lines.push('// 自动生成，勿手改 —— 由 tools/gen_levels.js 产出（特殊关卡：id 从 27 起，按难度递进）');
+  lines.push('// 自动生成，勿手改 —— 由 tools/gen_levels.js 产出（特殊关卡：id 从 28 起，按难度递进）');
   lines.push('// 共 ' + levels.length + ' 关，覆盖 k=1/2/3 全尺寸，顺序解锁。');
+  lines.push('// 注意：id 27 为手调特殊关「展翅雄鹰」（config.js SPECIAL_HANDBOOK），START_ID=28 保证重跑不会覆盖；');
+  lines.push('//       id 25 为普通关「逃逸的移动卡」（移动卡玩法），不在本文件内。');
   lines.push('// 想新增特殊玩法：在此数组追加一条（引用版：shapeKey/k/zoneMode/cardSet，运行时由 config.js 的 expandShapeRef 展开），');
-  lines.push('// 或把更多 k 档/维度交给 gen_levels.js 重跑生成。1~24 为手调普通关，不在本文件内。');
+  lines.push('// 或把更多 k 档/维度交给 gen_levels.js 重跑生成。1~25 为手调普通关（含移动卡关），不在本文件内。');
   lines.push('GameGlobal.SPECIAL_LEVELS = [');
   for (const lv of levels) {
     lines.push('  {');
@@ -190,4 +194,5 @@ function statOf(levels) {
 const st = statOf(specialLevels);
 console.log('特殊关卡(生成) ' + specialLevels.length + ' 关 → ' + spTarget);
 console.log('  统计：单区=' + st.single + ' 双区=' + st.double + ' 含冰=' + st.frozen + ' 大地图=' + st.viewport + ' 巨物(k=3)=' + st.giant);
-console.log('总关卡数（24 手调普通 + 2 手调特殊 + ' + specialLevels.length + ' 生成特殊）= ' + (24 + 2 + specialLevels.length));
+console.log('总关卡数（25 手调普通 + 2 手调特殊 + ' + specialLevels.length + ' 生成特殊）= ' + (25 + 2 + specialLevels.length));
+}

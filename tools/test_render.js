@@ -6,11 +6,20 @@
 'use strict';
 
 global.GameGlobal = {};
-const calls = { save: 0, restore: 0, translate: 0, scale: 0, arc: 0, fillText: 0 };
+const calls = { save: 0, restore: 0, translate: 0, scale: 0, arc: 0, fillText: 0, arcTo: 0 };
 const ctxStub = {
   setTransform() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {},
   stroke() {}, fill() {}, fillRect() {},
-  arc() { calls.arc++; }, arcTo() {}, closePath() {},
+  arc() { calls.arc++; },
+  // 真机 canvas 严格校验参数：半径非法（负/NaN）直接抛 IndexSizeError 崩掉游戏。
+  // 这里同样校验，把这类问题挡在测试阶段（曾出现：移动卡消除动画末期内缩尺寸为负 → 负半径崩溃）。
+  arcTo(x1, y1, x2, y2, r) {
+    calls.arcTo++;
+    if (typeof r !== 'number' || !isFinite(r) || r < 0) {
+      throw new Error('arcTo 非法半径: ' + r + '（真机 canvas 会抛 IndexSizeError 崩溃）');
+    }
+  },
+  closePath() {},
   clip() {},
   save() { calls.save++; }, restore() { calls.restore++; },
   translate() { calls.translate++; }, scale() { calls.scale++; }, rotate() {},
@@ -63,12 +72,12 @@ async function main() {
   await waitReady();
   const Main = GameGlobal.Main;
 
-  // 第 25 关（鹰形 + 镜头）：完整渲染 3 帧（含入场镜头推进）
-  Main.game = new GameGlobal.Game(25);
+  // 第 27 关（鹰形 + 镜头）：完整渲染 3 帧（含入场镜头推进）
+  Main.game = new GameGlobal.Game(27);
   Main.game.startIntro();
   Main.page = 'game';
   for (let i = 0; i < 3; i++) { Main.update(16); Main.render(); }
-  check(true, '第25关游戏页渲染无崩溃（含镜头/地板/特殊格/分区边框）');
+  check(true, '第27关游戏页渲染无崩溃（含镜头/地板/特殊格/分区边框）');
   check(calls.translate > 0 && calls.scale > 0, '镜头变换被应用');
   check(calls.arc > 0, '特殊格角标/能力徽章已绘制');
   Main.game.skipIntro();
@@ -100,6 +109,18 @@ async function main() {
   Main.page = 'game';
   for (let i = 0; i < 3; i++) { Main.update(16); Main.render(); }
   check(true, '旧关渲染回归无崩溃');
+
+  // 第 25 关（移动卡）消除动画全程：scale 从 1 逐帧缩到 0 再到负值。
+  // 曾在此崩溃：卡片内缩后尺寸为负 → roundRectPath 半径为负 → 真机 arcTo IndexSizeError。
+  Main.game = new GameGlobal.Game(25);
+  Main.page = 'game';
+  const gm25 = Main.game;
+  for (let s = 1; s >= -0.4; s -= 0.04) {
+    gm25.movers.forEach((mv) => { mv.visual.scale = s; });
+    Main.render();
+  }
+  gm25.movers.forEach((mv) => { mv.visual.scale = 1; });
+  check(true, '移动卡消除动画全程（scale 1→0→负）渲染无非法圆角参数');
 
   console.log('');
   if (errors) { console.log('渲染冒烟存在失败 (' + errors + ' 项)'); process.exitCode = 1; }

@@ -39,7 +39,10 @@
 
     roundRectPath: function (x, y, w, h, r) {
       var ctx = this.ctx;
-      r = Math.min(r, w / 2, h / 2);
+      // 防御：消除动画末期卡片缩到极小时，内缩计算可能让 w/h 变成 0 或负数，
+      // 若直接拿 w/2 去 clamp 会把半径也变成负数 → 真机 canvas 的 arcTo 抛 IndexSizeError 直接崩游戏。
+      if (!(w > 0) || !(h > 0)) return;      // 宽高非正（含 NaN/负）→ 不绘制
+      r = Math.max(0, Math.min(r, w / 2, h / 2)); // 半径夹到 [0, min(w,h)/2]
       ctx.beginPath();
       ctx.moveTo(x + r, y);
       ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -203,7 +206,7 @@
         drawScale *= 1 + 0.1 * Math.sin((now - card.flashT) / 150 * Math.PI * 2);
       }
       var size = m.cw * drawScale;
-      if (size <= 1) return;
+      if (!(size > 1)) return; // 缩小到极小/负数/NaN（消除动画末期）不绘制
 
       var x = v.x - size / 2, y = v.y - size / 2;
 
@@ -223,14 +226,33 @@
         ctx.drawImage(img, x, y, size, size);
       }
 
+      // 移动卡（mover）：红色薄边框标识，让玩家一眼认出会移动的那张卡（普通卡无此标记）
+      // 内缩 8% 圆角描边，完全嵌在卡片图案内部，不压到卡片边缘
+      if (card.isMover && state !== 'eliminated') {
+        var mp = Math.max(2, size * 0.08);
+        var inner = size - mp * 2;
+        // 卡片缩小到内缩后没有空间时跳过红框（否则负尺寸会让 arcTo 崩）
+        if (inner > 2) {
+          // 停在出口"犹豫"（准备溜走）时红框加粗变亮 → 玩家一眼看出它要跑了
+          var hesitating = !card.flying && card.hesitateLeft > 0;
+          ctx.save();
+          ctx.lineWidth = Math.max(1, size * 0.035) * (hesitating ? 2.4 : 1);
+          ctx.strokeStyle = hesitating ? 'rgba(255, 48, 48, 0.98)' : 'rgba(235, 60, 60, 0.85)';
+          this.roundRectPath(x + mp, y + mp, inner, inner, size * 0.1);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
       // 冰层（frozen 卡 iceAlpha=1 常驻，配对消除时 Tween 淡出，直接叠在水果图上）
       var iceAlpha = v.iceAlpha;
       if (iceAlpha > 0.01) {
-        ctx.save();
-        ctx.globalAlpha = Math.min(1, iceAlpha);
         // 冰壳：比卡片内缩一圈（6%）+ 圆角，露出水果卡片边缘
         var pad = Math.max(2, size * 0.06);
         var ix = x + pad, iy = y + pad, isz = size - pad * 2;
+        if (isz <= 2) return; // 内缩后无空间（卡片缩到极小）→ 跳过冰层绘制
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, iceAlpha);
         this.roundRectPath(ix, iy, isz, isz, isz * 0.2);
         ctx.clip();
         ctx.fillStyle = 'rgba(180, 225, 255, 0.62)';
@@ -1011,6 +1033,13 @@
       }
       // 连线（消除金线 / 提示蓝线，画在卡片上层）
       this.drawConnectionLine(game.connectionLine);
+      // 移动卡（mover）：浮动于棋盘最上层（独立于 cardNodes，复用 drawCard；多张遍历绘制）
+      if (game.movers) {
+        for (var mi = 0; mi < game.movers.length; mi++) {
+          var mv = game.movers[mi];
+          if (mv.state !== 'eliminated') this.drawCard(mv, now);
+        }
+      }
       // 棋盘粒子（随镜头）
       this.drawParticles('board');
       ctx.restore();
@@ -1278,6 +1307,86 @@
       });
       this.drawTextButton(bx, py + 406, btnW, 32, '返回首页', {
         id: 'win_home', fontSize: 16,
+        bg: 'rgba(0,0,0,0)', border: 'transparent', textColor: '#A08050',
+      });
+
+      ctx.restore();
+    },
+
+    /** 失败结算：移动卡完全飞出屏幕（第 25 关移动卡玩法；仿 renderWin） */
+    renderLose: function () {
+      this.renderGame(false);
+
+      var ctx = this.ctx;
+      var now = Main.lastTime;
+      var cx = GameGlobal.DESIGN_W / 2;
+
+      // 暗化遮罩
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(0, 0, GameGlobal.DESIGN_W, GameGlobal.DESIGN_H);
+
+      // 面板弹入动画（easeOutBack 弹性）
+      var t = Math.min(1, (now - Main.loseShownAt) / 450);
+      var scale = easeOutBack(t);
+
+      var panelW = 320, panelH = 360;
+      var px = cx - panelW / 2;
+      var py = (GameGlobal.DESIGN_H - panelH) / 2 - 6;
+
+      ctx.save();
+      ctx.translate(cx, py + panelH / 2);
+      ctx.scale(scale, scale);
+      ctx.translate(-cx, -(py + panelH / 2));
+
+      // 面板主体（暖白 + 红警示描边）
+      ctx.save();
+      ctx.shadowColor = 'rgba(200, 60, 50, 0.5)';
+      ctx.shadowBlur = 24;
+      this.roundRectPath(px, py, panelW, panelH, 24);
+      var bodyGrad = ctx.createLinearGradient(px, py, px, py + panelH);
+      bodyGrad.addColorStop(0, '#FFFBF7');
+      bodyGrad.addColorStop(1, '#FFE9E0');
+      ctx.fillStyle = bodyGrad;
+      ctx.fill();
+      ctx.restore();
+
+      this.roundRectPath(px, py, panelW, panelH, 24);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#E2725B';
+      ctx.stroke();
+
+      // 顶部红色标题条
+      var barH = 92;
+      this.roundRectPath(px, py, panelW, barH, 24);
+      ctx.save();
+      ctx.clip();
+      var barGrad = ctx.createLinearGradient(px, py, px, py + barH);
+      barGrad.addColorStop(0, '#F0856B');
+      barGrad.addColorStop(1, '#E2584B');
+      ctx.fillStyle = barGrad;
+      ctx.fillRect(px, py, panelW, barH);
+      ctx.restore();
+
+      this.drawText('移动卡飞出屏幕！', cx, py + 50, 26, '#FFF', 'center', true);
+
+      // 关卡名 + 失败说明
+      var loseData = Main.loseData || {};
+      var lvCfg = GameGlobal.getLevelConfig(loseData.levelId);
+      var titleText = '特殊关卡 · 第' + GameGlobal.getLevelDisplayNumber(loseData.levelId) + '关 · ' + (lvCfg ? lvCfg.name : '');
+      this.drawTextFit(titleText, cx, py + 124, panelW - 50, 18, '#8B5A2B', 'center', true);
+      this.drawText('在它滑出屏幕前，你没能消除它…', cx, py + 158, 16, '#B06050', 'center', true);
+      this.drawText('（点中它 + 它的同类即可配对消除）', cx, py + 184, 13, '#C09080', 'center', true);
+
+      // 按钮
+      var btnW = panelW - 60;
+      var bx = cx - btnW / 2;
+      this.drawTextButton(bx, py + 226, btnW, 52, '再试一次', {
+        id: 'lose_retry', fontSize: 22,
+        gradient: ['#FFB08A', '#EF6A50'], border: '#C8503A', textColor: '#FFF',
+        shadow: 'rgba(210,90,60,0.5)', bottomBar: '#C8503A', radius: 16,
+      });
+      this.drawTextButton(bx, py + 290, btnW, 36, '返回首页', {
+        id: 'lose_home', fontSize: 16,
         bg: 'rgba(0,0,0,0)', border: 'transparent', textColor: '#A08050',
       });
 

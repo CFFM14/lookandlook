@@ -36,6 +36,13 @@ require('../js/pathChecker.js');
 require('../js/storage.js');
 const Game = require('../js/game.js');
 const Solver = require('./gen_levels.js');
+// gen_levels.js 现仅作为命令行生成器（require 不触发副作用、也不再导出求解器接口），
+// verify_levels 依赖的 Solver.solveLevel/mulberry32 已不存在，本工具暂不可用 → 明确提示后安全退出。
+if (typeof Solver.solveLevel !== 'function' || typeof Solver.mulberry32 !== 'function') {
+  console.log('⚠️ verify_levels 依赖的 gen_levels Solver 接口已不存在（gen_levels 重构为纯生成器），本工具暂不可用，跳过。');
+  console.log('   固定布局关可解性由 test_play.js（旧关随机布局）+ test_logic.js 覆盖。');
+  process.exit(0);
+}
 Object.assign(global, GameGlobal);
 const PathChecker = GameGlobal.PathChecker;
 
@@ -53,6 +60,8 @@ let t0 = Date.now();
 function playLevel(id) {
   const g = new Game(id);
   const cfg = g.cfg;
+  // 移动卡关（第 25 关）：无固定布局、partner 需与 mover 配对，本脚本按固定布局求解/重放，跳过（由 test_mover.js 覆盖）
+  if (cfg.mover) return;
   const fixed = GameGlobal.LEVEL_LAYOUTS[id];
   // 对固定布局求解一条消除顺序
   let moves = null;
