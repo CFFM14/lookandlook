@@ -254,20 +254,19 @@
       var imgKey = GameGlobal.cardTypeToAssetKey(card.type);
       var img = imgKey ? this.images[imgKey] : null;
 
-      // 香蕉移动卡：type===BANANA_MOVER_TYPE 的 mover 用红底 banana.png（开发者换的一张图）替换普通香蕉图；
-      // 它与场上其它 type-12 香蕉卡本质同种、照常可消除。其余移动卡/普通卡走原 img。
-      var isBananaMover = card.isMover && state !== 'eliminated' && card.type === GameGlobal.BANANA_MOVER_TYPE;
-      if (isBananaMover) {
-        var banana = this.images['banana'];
-        if (banana) ctx.drawImage(banana, x, y, size, size);
-        else if (img) ctx.drawImage(img, x, y, size, size);
+      // 移动卡"换图"皮肤：type 在 MOVER_SKIN 里的 mover 用对应红底图（开发者只换图、类型不变），
+      // 它与场上其它同类型卡本质同种、照常可消除。其余移动卡/普通卡走原 img。
+      var skinKey = (card.isMover && state !== 'eliminated' && GameGlobal.MOVER_SKIN) ? GameGlobal.MOVER_SKIN[card.type] : null;
+      var skin = skinKey ? this.images[skinKey] : null;
+      if (skin) {
+        ctx.drawImage(skin, x, y, size, size);
       } else if (img) {
         ctx.drawImage(img, x, y, size, size);
       }
 
-      // 移动卡（非香蕉那张）：红色薄边框标识，让玩家一眼认出会移动的那张卡（普通卡无此标记）
+      // 移动卡（非皮肤那张）：红色薄边框标识，让玩家一眼认出会移动的那张卡（普通卡无此标记）
       // 内缩 8% 圆角描边，完全嵌在卡片图案内部，不压到卡片边缘。
-      if (card.isMover && state !== 'eliminated' && !isBananaMover) {
+      if (card.isMover && state !== 'eliminated' && !skin) {
         var mp = Math.max(2, size * 0.08);
         var inner = size - mp * 2;
         // 卡片缩小到内缩后没有空间时跳过红框（否则负尺寸会让 arcTo 崩）

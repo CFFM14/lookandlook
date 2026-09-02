@@ -78,9 +78,12 @@ GameGlobal.GRID_OVERLAP_RATIO = 0.12;
  *  hesitate=跑到出口准备溜走前的"犹豫"停顿毫秒（预警 + 给玩家最后机会点住它） */
 GameGlobal.MOVER_CFG = { speed: 35, escapeSpeed: 35, hesitate: 900 };
 
-/** 移动卡里当作"香蕉"的那个类型：渲染时用红底 banana.png 替换普通 fruit_12 香蕉图。
- *  开发者只是换了一张图，类型不变，仍与其它 type-12 香蕉卡互通、可消除。 */
-GameGlobal.BANANA_MOVER_TYPE = 12;
+/** 移动卡"换图"皮肤：type → images 字典 key。开发者只换图、类型不变，
+ *  与场上其它同类型卡本质同种、照常可消除；新增只需加一行（如以后 27/28 再换图）。 */
+GameGlobal.MOVER_SKIN = {
+  12: 'banana',    // type 12 = 香蕉
+  8:  'pineapple', // type 8  = 菠萝
+};
 
 /** 水果名称（与 images/fruit_01~12.png 一一对应） */
 GameGlobal.FRUIT_NAMES = [
@@ -437,15 +440,16 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: false, shuffleEnabled: true,
   });
 
-  // 第26关【双卡追逃】：2 张移动卡（无冰）——双卡版换新布局，熟悉分散走位
+  // 第26关【双卡追逃】：2 张移动卡（无冰）——其中一张是「菠萝卡」（红底菠萝图，无红框），
+  // 场上另有一张不动的菠萝卡跟它配对；另一张仍是普通水果（红框标识）。两张会互相弹开。
   levels.push({
     id: 26,
     name: '双卡追逃',
-    desc: '两张卡片同时移动，它们还会互相弹开，别让任何一张溜出屏幕！',
+    desc: '两张卡片同时移动，其中一张是菠萝，它们还会互相弹开，别让任何一张溜出屏幕！',
     difficulty: 3,
     rows: 10, cols: 8, fruitTypeCount: 12,
     gravity: null, frozenRatio: 0,
-    mover: true, moverTypes: [1, 2],
+    mover: true, moverTypes: [8, 2],
     hintEnabled: true, bombEnabled: false, shuffleEnabled: true,
   });
 
