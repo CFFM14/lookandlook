@@ -440,16 +440,16 @@ GameGlobal.LEVELS = (function () {
     hintEnabled: true, bombEnabled: false, shuffleEnabled: true,
   });
 
-  // 第26关【双卡追逃】：2 张移动卡（无冰）——其中一张是「菠萝卡」（红底菠萝图，无红框），
-  // 场上另有一张不动的菠萝卡跟它配对；另一张仍是普通水果（红框标识）。两张会互相弹开。
+  // 第26关【双卡追逃】：2 张移动卡（无冰）——「菠萝卡」(type 8) + 「香蕉卡」(type 12)，
+  // 两张都用红底专属图（无红框），场上各有一张不动的同类卡跟它们配对；两张会互相弹开。
   levels.push({
     id: 26,
     name: '双卡追逃',
-    desc: '两张卡片同时移动，其中一张是菠萝，它们还会互相弹开，别让任何一张溜出屏幕！',
+    desc: '菠萝和香蕉两张卡片同时移动，它们还会互相弹开，别让任何一张溜出屏幕！',
     difficulty: 3,
     rows: 10, cols: 8, fruitTypeCount: 12,
     gravity: null, frozenRatio: 0,
-    mover: true, moverTypes: [8, 2],
+    mover: true, moverTypes: [8, 12],
     hintEnabled: true, bombEnabled: false, shuffleEnabled: true,
   });
 
