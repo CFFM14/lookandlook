@@ -590,12 +590,15 @@
     return null;
   };
 
-  /** 命中设计坐标 (x, y) 的 mover（main.handleTap 优先于棋盘 hitTest 检测），返回 mover 或 null */
-  Game.prototype.hitTestMover = function (x, y) {
+  /** 命中设计坐标 (x, y) 的 mover（main.handleTap 优先于棋盘 hitTest 检测），返回 mover 或 null。
+   *  onlyFlying=true 时只命中"正在逃出屏幕"的 mover —— 逃逸中的卡会飘到 HUD/按钮上方，
+   *  若被按钮抢走点击玩家就点不到、救不回来，故 handleTap 让它优先于按钮判定。 */
+  Game.prototype.hitTestMover = function (x, y, onlyFlying) {
     var m = this.metrics;
     for (var i = 0; i < this.movers.length; i++) {
       var mover = this.movers[i];
       if (mover.state === 'eliminating' || mover.state === 'eliminated') continue;
+      if (onlyFlying && !mover.flying) continue;
       if (Math.abs(x - mover.visual.x) <= m.cw / 2 &&
           Math.abs(y - mover.visual.y) <= m.ch / 2) {
         return mover;

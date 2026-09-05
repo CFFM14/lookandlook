@@ -367,6 +367,17 @@
         return;
       }
 
+      // 正在逃出屏幕的移动卡（flying）优先命中：
+      // 它会飘到 HUD/按钮上方（如右上"?"帮助键、底部道具栏），若按钮先判定会把点击抢走，
+      // 玩家点不到就救不回来 → 逃逸中的 mover 提到按钮之前判定（普通 mover 仍走原有优先级）。
+      if (this.page === 'game' && this.game && !this.game.isStack) {
+        var escMv = this.game.hitTestMover(d.x, d.y, true);
+        if (escMv) {
+          this.game.onTapMover(escMv);
+          return;
+        }
+      }
+
       // 按钮优先（最上层）
       var btn = this.hitButton(cx, cy);
       if (btn) {

@@ -532,6 +532,63 @@ async function main() {
     ok(GameGlobal.Storage.getTools().freeze === before2, '非 mover 关 useFreeze 不消耗库存（toast 提示）');
   }
 
+  console.log('\n[17] 逃逸中的 mover 优先于 HUD 按钮（飘到 "?" 帮助键上方仍可点）');
+  {
+    // 复现真机 bug：mover flying 上飘到右上"?"按钮中心（设计坐标 ≈ (365, 45)），
+    // handleTap 必须先按 onlyFlying 命中它，否则被 hitButton 抢走点击 → 玩家救不回。
+    const g = new Game(25);
+    parkMovers(g);
+    const mv = g.movers[0];
+    // 把 mover 视觉位置挪到"?"按钮中心并设为 flying（模拟滑出屏幕中）
+    mv.visual.x = 365;
+    mv.visual.y = 45;
+    mv.flying = true;
+    mv.moving = true;
+    mv.paused = false;
+
+    // ① flying mover + onlyFlying=true → 命中
+    ok(g.hitTestMover(365, 45, true) === mv, 'flying mover 与按钮重叠时 onlyFlying=true 命中它');
+    // ② 同一坐标 onlyFlying=false 也命中（老行为不破坏）
+    ok(g.hitTestMover(365, 45, false) === mv, 'onlyFlying=false 仍命中 flying mover（老行为兼容）');
+
+    // ③ 关键优先级：仅当 mover.flying 时才让 onlyFlying=true 命中，
+    //    避免误抢静止 mover 的点击（普通 mover 仍走原按钮优先）
+    mv.flying = false; mv.paused = false;
+    ok(g.hitTestMover(365, 45, true) === null, '静止 mover 飘到按钮上时 onlyFlying=true 不抢（保持按钮优先）');
+
+    // ④ 远处空白点：无 mover → null
+    mv.flying = true;
+    ok(g.hitTestMover(50, 1000, true) === null, '空白处 onlyFlying=true 返回 null');
+
+    // ⑤ 端到端：模拟 handleTap 新流程——先 onlyFlying 命中，再点 partner 配对消除
+    // 先清掉除 partner 外的所有普通卡，让 2 折路径必通（mover 视觉在 (365,45)，
+    // _moverCell 钳到边缘 cell，从边缘到唯一 partner 一定 2 折可达）
+    const partnerCandidates = findCardsByType(g, mv.type);
+    ok(partnerCandidates.length === 1, 'partner 唯一（同型仅 1 张）');
+    const partner = partnerCandidates[0];
+    for (let r = 1; r <= g.rows; r++) for (let c = 1; c <= g.cols; c++) {
+      const cd = g.cardNodes[r][c];
+      if (cd && cd !== partner) { g.grid[r][c] = 0; g.cardNodes[r][c] = null; }
+    }
+    g.recomputeSingletons();
+    // partner 不该被单例机制吞掉（mover 关的 partner 单例保护）
+    ok(g.cardNodes[partner.r][partner.c] === partner, 'partner 单例保护：未误消');
+
+    mv.flying = true;
+    const esc = g.hitTestMover(365, 45, true);
+    ok(esc === mv, 'handleTap 第一步 onlyFlying 命中 flying mover');
+    g.onTapMover(esc);
+    ok(g.selectedCard === mv && mv.paused === true, '点 flying mover → 选中并暂停（paused=true 防 flying 继续走）');
+    // 配对：mover(类型一致) + 路径必通 → tryEliminateMover 应走 eliminate 分支
+    g.tryEliminateMover(mv, partner);
+    // 等异步推进完，验证 mover 与 partner 均消除、selectedCard 清空
+    await sleep(700);
+    ok(g.selectedCard === null, 'T.ELIM_TOTAL 后 selectedCard 已清');
+    ok(mv.eliminated || mv.state === 'eliminated', '异步消除后 mover 已 eliminated');
+    const pNode = g.cardNodes[partner.r][partner.c];
+    ok(!pNode || pNode.state === 'eliminated', '异步消除后 partner 已 eliminated');
+  }
+
   console.log('\n' + (failed ? '—— 有 ' + failed + ' 项失败 ——' : '—— 全部通过 ✓ ——') + '（通过 ' + passed + ' 项）');
   if (failed) process.exitCode = 1;
 }
