@@ -11,8 +11,10 @@
     this.isStack = true;
     this.levelId = levelId;
     this.cfg = GameGlobal.getLevelConfig(levelId);
-    this.shape = this.cfg.shape || 'diamond';
-    this.depth = this.cfg.depth || 2;
+    this.shape = this.cfg.shape || 'flower';
+    this.depth = this.cfg.depth || 6;                       // 叠层数
+    this.baseR = this.cfg.baseR || 4;                       // 底层半径（格）
+    this.shrink = (this.cfg.shrink == null ? 0.3 : this.cfg.shrink); // 每层收缩（格）
     this.cardSet = this.cfg.cardSet || 'fruit';
     this.cam = null;                 // 固定布局，无入场镜头
     this.connectionLine = null;      // 复用 render.drawConnectionLine
@@ -25,14 +27,15 @@
     this.moves = 0;
     this.startTime = Date.now();
     this.tiles = [];
-    this._slots = this._genSlots(this.shape, this.depth); // 先生成错落槽位
-    this._computeMetrics();          // 再按槽位范围居中
-    this._buildTiles();              // 分配类型 + 实例化
+    this.cardW = 40;                 // 卡片像素尺寸，_computeMetrics 按屏幕可用区自适应覆写
+    this._slots = this._genSlots(this.shape, this.depth); // 先生成错落槽位（每局随机错落方向）
+    this._computeMetrics();          // 再按槽位范围居中 + 定卡片尺寸
+    this._buildTiles();              // 分配类型（每局随机）+ 实例化
     this._recomputeCovered();
     if (!this._hasTopPair()) this._reshuffleRemaining(); // 开局必保证有一步可走
   }
 
-  var CARD = 46; // 卡片设计像素尺寸
+  var CARD_MIN = 10, CARD_MAX = 52; // 卡片像素尺寸上下限（防极端形状算出超大/超小）
 
   /** 卡组 → type 池（'fruit' = f1~f12；'mixed' = f1~f12 + v1~v12） */
   StackGame.prototype._typePool = function () {
@@ -52,10 +55,14 @@
    */
   StackGame.prototype._genSlots = function (shape, depth) {
     var slots = [], L, x, y;
-    var baseR = 3; // 第 1 层的基础半径
+    // 每局随机一个“错落方向”（4 条对角线取一）：轮廓（花苞/钻石）不变，但叠出来朝向每局不同
+    var dirs = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+    var d = dirs[Math.floor(Math.random() * dirs.length)];
+    this._shiftDir = d;
     for (L = 1; L <= depth; L++) {
-      var off = (L - 1) * 0.5;          // 每层半格错位（花瓣堆叠的灵魂）
-      var rad = baseR - (L - 1) * 0.6;  // 高层逐渐收小，呈金字塔/花苞状
+      var step = (L - 1) * 0.5;             // 每层半格错位（花瓣堆叠的灵魂）
+      var ox = d[0] * step, oy = d[1] * step;
+      var rad = this.baseR - (L - 1) * this.shrink; // 高层逐渐收小，呈金字塔/花苞状
       if (rad < 0.6) rad = 0.6;
       var r = Math.ceil(rad);
       for (x = -r; x <= r; x++) {
@@ -68,14 +75,18 @@
             // 钻石/金字塔：|x|+|y| <= rad（菱形轮廓）
             inMask = (Math.abs(x) + Math.abs(y)) <= rad + 0.001;
           }
-          if (inMask) slots.push({ cx: x + off, cy: y + off, layer: L });
+          if (inMask) slots.push({ cx: x + ox, cy: y + oy, layer: L });
         }
       }
     }
     return slots;
   };
 
-  /** 计算棋盘在设计坐标中的居中矩形（按槽位范围，顶部预留 HUD 空间） */
+  /**
+   * 计算棋盘在设计坐标中的居中矩形 + 卡片像素尺寸。
+   * 大牌堆（200+ 张）不能再用固定 46px：按屏幕可用区（顶部 HUD 之下、底部道具栏之上）等比缩放，
+   * 保证任何 shape/depth 组合都能整盘塞进屏幕，不被 HUD 遮挡。
+   */
   StackGame.prototype._computeMetrics = function () {
     var W = GameGlobal.DESIGN_W, H = GameGlobal.DESIGN_H || 844;
     var safeTop = GameGlobal.SAFE_TOP || 0;
@@ -85,34 +96,73 @@
       if (s.cx < minX) minX = s.cx; if (s.cx > maxX) maxX = s.cx;
       if (s.cy < minY) minY = s.cy; if (s.cy > maxY) maxY = s.cy;
     }
-    var boardW = (maxX - minX + 1) * CARD;
-    var boardH = (maxY - minY + 1) * CARD;
-    var originX = Math.round((W - boardW) / 2) - minX * CARD;
-    var originY = Math.round(safeTop + 150) - minY * CARD;
-    // originY 若贴顶，给一点底部余量
-    if (originY + boardH + 40 > H) originY = Math.round(H - boardH - 40) - minY * CARD;
-    this.metrics = { cw: CARD, originX: originX, originY: originY, boardW: boardW, boardH: boardH };
+    var gridW = (maxX - minX + 1), gridH = (maxY - minY + 1);
+    var availW = W - 20;                       // 左右各留 10 边距
+    var availTop = safeTop + 96;               // 顶部信息栏（返回/关卡名/计时）之下
+    var availBottom = H - 132;                 // 底部道具区之上
+    var availH = Math.max(120, availBottom - availTop);
+    var cw = Math.floor(Math.min(availW / gridW, availH / gridH));
+    if (!(cw > CARD_MIN)) cw = CARD_MIN;
+    if (cw > CARD_MAX) cw = CARD_MAX;
+    this.cardW = cw;
+
+    // 注意半格：cx/cy 是卡片“中心”，卡片左/上边缘在 (cx-0.5)/(cy-0.5)，
+    // 所以居中基准要减 (minX-0.5)*cw，否则整盘左移半张卡（大牌堆时左边会出血）。
+    var boardW = gridW * cw, boardH = gridH * cw;
+    var originX = Math.round((W - boardW) / 2) - (minX - 0.5) * cw;
+    var originY = Math.round(availTop + (availH - boardH) / 2) - (minY - 0.5) * cw;
+    this.metrics = { cw: cw, originX: originX, originY: originY, boardW: boardW, boardH: boardH };
   };
 
-  /** 实例化所有牌：槽位总数须为偶数（奇数则去掉最后一张），每对（两张）同 type 保证成对可消 */
+  /**
+   * 实例化所有牌：槽位总数须为偶数（奇数则去掉最后一张），每对（两张）同 type 保证成对可消。
+   *
+   * 配对策略（关键，决定死局率）：按每张牌“头顶压着几张牌”（coverCount）升序排序后两两配对。
+   * 这样一对牌的 uncover 时机几乎相同 → 玩家从上往下消时两张会同时露头，不会长期堆着一堆“孤牌”。
+   * 若按槽位顺序或纯随机配对，会出现「A 早就露出、B 还压在 5 张底下」，顶层全是无法配对的单牌 → 频繁死局。
+   */
   StackGame.prototype._buildTiles = function () {
     var slots = this._slots;
     if (slots.length % 2 === 1) slots = slots.slice(0, slots.length - 1); // 保证偶数张
     this._slots = slots;
+
+    var i, j, n;
+    // 1) 算 coverCount：更高层且矩形重叠（|Δcx|<1 且 |Δcy|<1）的牌数量 = 消掉它之前要先清掉的牌数
+    for (i = 0; i < slots.length; i++) {
+      var s = slots[i];
+      n = 0;
+      for (j = 0; j < slots.length; j++) {
+        var o = slots[j];
+        if (o === s) continue;
+        if (o.layer > s.layer && Math.abs(o.cx - s.cx) < 1 && Math.abs(o.cy - s.cy) < 1) n++;
+      }
+      s.coverCount = n;
+    }
+    // 2) 按 coverCount 升序 + 小随机扰动排序（扰动避免同层的牌固定扎堆），再两两配对
+    var order = slots.slice();
+    for (i = 0; i < order.length; i++) order[i]._rk = order[i].coverCount + Math.random() * 0.9;
+    order.sort(function (a, b) { return a._rk - b._rk; });
+
+    // 3) 类型池打乱后循环取，保证各图案数量均衡（不会出现某种只有 1 对、某种 20 对）
     var pool = this._typePool();
-    var pairs = slots.length / 2;
+    for (i = pool.length - 1; i > 0; i--) {
+      var k = Math.floor(Math.random() * (i + 1));
+      var tmp = pool[i]; pool[i] = pool[k]; pool[k] = tmp;
+    }
+
     this.tiles = [];
-    for (var p = 0; p < pairs; p++) {
-      var ty = pool[p % pool.length];
-      this._makeTile(slots[p * 2], ty);
-      this._makeTile(slots[p * 2 + 1], ty);
+    for (i = 0; i < order.length; i += 2) {
+      var ty = pool[(i / 2) % pool.length];
+      this._makeTile(order[i], ty);
+      this._makeTile(order[i + 1], ty);
     }
   };
 
   /** 单张牌的实例化（格坐标 → 视觉中心） */
   StackGame.prototype._makeTile = function (pos, type) {
-    var vx = this.metrics.originX + pos.cx * CARD;
-    var vy = this.metrics.originY + pos.cy * CARD;
+    var cw = this.cardW;
+    var vx = this.metrics.originX + pos.cx * cw;
+    var vy = this.metrics.originY + pos.cy * cw;
     this.tiles.push({
       id: this.levelId + '_' + pos.cx + '_' + pos.cy + '_' + pos.layer,
       type: type, layer: pos.layer, cx: pos.cx, cy: pos.cy,
@@ -146,8 +196,8 @@
 
   /** 屏幕设计坐标 → 命中的最顶层可点牌（被压住的牌不会被返回；更高层牌优先） */
   StackGame.prototype.hitTest = function (dx, dy) {
-    var cellX = (dx - this.metrics.originX) / CARD;
-    var cellY = (dy - this.metrics.originY) / CARD;
+    var cellX = (dx - this.metrics.originX) / this.cardW;
+    var cellY = (dy - this.metrics.originY) / this.cardW;
     var best = null, bestLayer = -1;
     for (var i = 0; i < this.tiles.length; i++) {
       var t = this.tiles[i];
@@ -238,6 +288,56 @@
     this.selectedTile = null;
     this.connectionLine = null;
     this._recomputeCovered();
+  };
+
+  // ══════════════════════════════════════════════
+  //  道具：提示 / 打乱（叠层局只开放这两个，炸弹/冻结与本玩法无关）
+  // ══════════════════════════════════════════════
+
+  /** 提示：高亮一对「当前顶层可点」的同色牌（蓝线 + 闪烁），消耗 1 次提示 */
+  StackGame.prototype.showHint = function () {
+    if (!GameGlobal.Storage.useTool('hint')) {
+      if (GameGlobal.Main) GameGlobal.Main.showToast('提示次数不足，去商店购买吧');
+      return;
+    }
+    var top = [], i;
+    for (i = 0; i < this.tiles.length; i++) {
+      var t = this.tiles[i];
+      if (t.state !== 'eliminated' && !t.covered) top.push(t);
+    }
+    var byType = {};
+    for (i = 0; i < top.length; i++) (byType[top[i].type] = byType[top[i].type] || []).push(top[i]);
+    for (var k in byType) {
+      if (!byType.hasOwnProperty(k)) continue;
+      var same = byType[k];
+      if (same.length < 2) continue;
+      var a = same[0], b = same[1];
+      var now = Date.now(), s = this._session, self = this;
+      a.state = 'hintFlash'; a.flashT = now; a.visual.scale = 1;
+      b.state = 'hintFlash'; b.flashT = now; b.visual.scale = 1;
+      this.connectionLine = {
+        points: [{ x: a.visual.x, y: a.visual.y }, { x: b.visual.x, y: b.visual.y }],
+        color: 'blue', t0: now,
+      };
+      setTimeout(function () {
+        if (self._session !== s) return;
+        if (self.connectionLine && self.connectionLine.color === 'blue') self.connectionLine = null;
+        if (a.state === 'hintFlash') a.state = 'normal';
+        if (b.state === 'hintFlash') b.state = 'normal';
+      }, 1600);
+      return;
+    }
+    if (GameGlobal.Main) GameGlobal.Main.showToast('顶层暂无同色对，试试打乱');
+  };
+
+  /** 打乱：重洗剩余牌的图案分配（复用死局自救的洗牌逻辑），消耗 1 次打乱 */
+  StackGame.prototype.shuffleCards = function () {
+    if (!GameGlobal.Storage.useTool('shuffle')) {
+      if (GameGlobal.Main) GameGlobal.Main.showToast('打乱次数不足，去商店购买吧');
+      return;
+    }
+    this._reshuffleRemaining();
+    if (GameGlobal.Main) GameGlobal.Main.showToast('已重新洗牌');
   };
 
   /** 胜利 = 全部消除；死局 = 当前顶层可点牌中无同 type 对（无步可走则自动洗牌自救） */

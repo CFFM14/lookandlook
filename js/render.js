@@ -1025,6 +1025,104 @@
       this.drawText('通关可获得金币，首次通关奖励更丰厚', cx, 820, 14, 'rgba(139,90,43,0.65)', 'center', false);
     },
 
+    /**
+     * 备战（出装）页：进关前选本关携带的道具（最多 LOADOUT_MAX 种，次数仍走库存）
+     * 结构：标题/关卡名 → 道具卡 2×2（本关不可用的灰掉）→ 推荐套装 → 开始挑战
+     */
+    renderLoadout: function () {
+      this.drawBackground('bg_menu');
+      var ctx = this.ctx;
+      var cx = GameGlobal.DESIGN_W / 2;
+      var safeTop = GameGlobal.SAFE_TOP || 0;
+      var lvId = Main.pendingLevelId;
+      var cfg = (lvId != null) ? GameGlobal.getLevelConfig(lvId) : null;
+      var avail = GameGlobal.getAvailableTools(cfg);
+      var picked = Main.loadout || [];
+      var counts = GameGlobal.Storage.getTools();
+
+      this.drawTextButton(20, 44 + safeTop, 70, 40, '返回', { id: 'lo_back', fontSize: 16 });
+      this.drawText('🎒 备战', cx, 62 + safeTop, 30, '#8B5A2B', 'center', true);
+      if (cfg) {
+        this.drawTextFit('第' + GameGlobal.getLevelDisplayNumber(lvId) + '关 · ' + cfg.name,
+          cx, 98 + safeTop, 300, 18, '#A08060', 'center', true);
+      }
+      this.drawText('已携带 ' + picked.length + ' / ' + GameGlobal.LOADOUT_MAX + ' 种 · 用一次扣一次库存',
+        cx, 124 + safeTop, 13, 'rgba(139,90,43,0.75)', 'center', false);
+
+      // ── 道具卡（2×2）── 选中的金色高亮；本关不可用的整卡置灰但仍可点（点了给提示）
+      var cardW = 168, cardH = 126, gapX = 16, gapY = 14;
+      var startX = (GameGlobal.DESIGN_W - cardW * 2 - gapX) / 2;
+      var startY = 146 + safeTop;
+      for (var i = 0; i < GameGlobal.TOOL_META.length; i++) {
+        var m = GameGlobal.TOOL_META[i];
+        var x = startX + (i % 2) * (cardW + gapX);
+        var y = startY + Math.floor(i / 2) * (cardH + gapY);
+        var usable = avail.indexOf(m.key) >= 0;
+        var on = picked.indexOf(m.key) >= 0;
+        var cnt = counts[m.key] || 0;
+        var fg = usable ? '#5D4037' : '#9A9A9A';
+
+        this.roundRectPath(x, y, cardW, cardH, 16);
+        ctx.fillStyle = !usable ? 'rgba(233,233,233,0.92)' : (on ? 'rgba(255,214,107,0.95)' : 'rgba(255,247,228,0.95)');
+        ctx.fill();
+        ctx.lineWidth = on && usable ? 3 : 2;
+        ctx.strokeStyle = !usable ? '#C8C8C8' : (on ? '#F2A93B' : '#E8B34B');
+        ctx.stroke();
+
+        this.drawText(m.icon, x + 32, y + 34, 32, usable ? '#5D4037' : '#A8A8A8', 'center', false);
+        this.drawText(m.name, x + 56, y + 30, 18, fg, 'left', true);
+        this.drawText('×' + cnt, x + cardW - 12, y + 30, 14, (!usable || cnt <= 0) ? '#B0B0B0' : '#B8860B', 'right', true);
+        this.drawTextFit(m.desc, x + cardW / 2, y + 62, cardW - 18, 12, usable ? '#A08060' : '#B0B0B0', 'center', false);
+        var status = !usable ? (m.moverOnly ? '⚠ 仅移动卡关' : '⚠ 本关不可用') : (on ? '✓ 已携带' : '点击携带');
+        this.drawText(status, x + cardW / 2, y + 94, 14,
+          !usable ? '#C0392B' : (on ? '#B5651D' : '#A08060'), 'center', !!on || !usable);
+
+        Main.buttonBounds.push({ id: 'lo_tool_' + m.key, x: x, y: y, w: cardW, h: cardH });
+      }
+
+      // ── 推荐套装（一键套用；移动卡专属套装只在移动卡关出现）──
+      var py = startY + 2 * (cardH + gapY) + 20;
+      this.drawText('推荐套装', cx, py, 18, '#8B5A2B', 'center', true);
+      py += 16;
+      var presets = [];
+      for (var pi = 0; pi < GameGlobal.LOADOUT_PRESETS.length; pi++) {
+        var ps = GameGlobal.LOADOUT_PRESETS[pi];
+        if (ps.moverOnly && !(cfg && cfg.mover)) continue; // 非移动卡关不显示「追逃必备」
+        presets.push(ps);
+      }
+      var rowH = 46, rowGap = 8, bx = 24, bw = GameGlobal.DESIGN_W - 48;
+      for (var k = 0; k < presets.length; k++) {
+        var pr = presets[k];
+        var ry = py + k * (rowH + rowGap);
+        var same = pr.tools.length === picked.length;
+        for (var q = 0; same && q < pr.tools.length; q++) {
+          if (picked.indexOf(pr.tools[q]) < 0) same = false;
+        }
+        this.drawTextButton(bx, ry, bw, rowH, '', {
+          id: 'lo_preset_' + pr.id, radius: 14,
+          gradient: same ? ['#FFD66B', '#F2A93B'] : ['#FFF6E0', '#FFE9B8'],
+          border: same ? '#D98A1A' : '#E8B34B',
+        });
+        var icons = '';
+        for (var ic = 0; ic < pr.tools.length; ic++) {
+          var im = GameGlobal.getToolMeta(pr.tools[ic]);
+          if (im) icons += im.icon + ' ';
+        }
+        this.drawText(pr.name, bx + 14, ry + 16, 16, same ? '#7A4A1F' : '#5D4037', 'left', true);
+        this.drawText(icons, bx + bw - 14, ry + 16, 15, same ? '#7A4A1F' : '#8B5A2B', 'right', false);
+        this.drawText(pr.desc, bx + 14, ry + 34, 12, same ? 'rgba(122,74,31,0.85)' : '#A08060', 'left', false);
+      }
+
+      // ── 开始挑战 ──
+      var btnY = Math.min(py + presets.length * (rowH + rowGap) + 22, GameGlobal.DESIGN_H - 104);
+      this.drawTextButton((GameGlobal.DESIGN_W - 220) / 2, btnY, 220, 58, '开始挑战', {
+        id: 'lo_start', fontSize: 22, radius: 16,
+        gradient: ['#FFD66B', '#F2A93B'], border: '#D98A1A', textColor: '#FFF',
+        shadow: 'rgba(0,0,0,0.15)',
+      });
+      this.drawText('次数用完可以去商店购买', cx, Math.min(btnY + 78, GameGlobal.DESIGN_H - 16), 13, 'rgba(139,90,43,0.6)', 'center', false);
+    },
+
     /** 游戏页（withButtons=false 时仅绘制画面，用于结算页底层） */
     renderGame: function (withButtons) {
       this.drawBackground('bg_game');
@@ -1109,7 +1207,11 @@
         this.drawText('?', hcx, hcy + 1, 22, '#C8761A', 'center', true);
         Main.buttonBounds.push({ id: 'btn_help', x: helpX, y: helpY, w: helpSz, h: helpSz });
       }
-      this.drawTextFit('第' + GameGlobal.getLevelDisplayNumber(game.levelId) + '关 · ' + game.cfg.name,
+      // 叠叠乐是单局玩法，不显示关号（普通/特殊关仍显示「第N关 · 名字」）
+      var topTitle = (game.cfg._category === 'stack')
+        ? game.cfg.name
+        : ('第' + GameGlobal.getLevelDisplayNumber(game.levelId) + '关 · ' + game.cfg.name);
+      this.drawTextFit(topTitle,
         GameGlobal.DESIGN_W / 2, 48 + safeTop, GameGlobal.DESIGN_W - 170, 20, '#7A4A1F', 'center', true);
       this.drawText('⏱ ' + game.getElapsed() + 's', GameGlobal.DESIGN_W - 62, 48 + safeTop, 17, '#7A4A1F', 'right', false);
       ctx.restore();
@@ -1118,37 +1220,36 @@
       this.drawParticles('design');
 
       // 底部工具区（结算页不注册这些按钮）——按钮加大 + 剩余次数角标（用完不置灰，点击会提示去商店购买）
-      // 4 个按钮等距分布（15.6 / 109.2 / 202.8 / 296.4，左上角 x），间距 93.6
-      if (withButtons) {
+      // 只画「备战页携带的」道具（每关最多 2 个），居中排布；层层消消不支持道具故不画
+      if (withButtons && !game.isStack) {
         var btnSize = 78;
         var bottomY = GameGlobal.DESIGN_H - 104;
         var tools = GameGlobal.Storage.getTools();
-        var toolDefs = [
-          { key: 'hint', img: 'btn_hint', id: 'btn_hint', x: 15.6, enabled: game.cfg.hintEnabled },
-          { key: 'shuffle', img: 'btn_shuffle', id: 'btn_shuffle', x: 109.2, enabled: game.cfg.shuffleEnabled },
-          { key: 'bomb', img: 'btn_bomb', id: 'btn_bomb', x: 202.8, enabled: game.cfg.bombEnabled },
-          { key: 'freeze', id: 'btn_freeze', x: 296.4, enabled: !!(game.movers && game.movers.length) },
-        ];
-        for (var t = 0; t < toolDefs.length; t++) {
-          var td = toolDefs[t];
-          if (!td.enabled) continue;
+        var carried = GameGlobal.resolveLoadout(game.cfg, Main.loadout);
+        var gap = carried.length > 1 ? 40 : 0;
+        var totalW = carried.length * btnSize + (carried.length - 1) * gap;
+        var startX = (GameGlobal.DESIGN_W - totalW) / 2;
+        for (var t = 0; t < carried.length; t++) {
+          var td = GameGlobal.getToolMeta(carried[t]);
+          if (!td) continue;
+          var tx = startX + t * (btnSize + gap);
           var count = tools[td.key] || 0;
-          // 冻结按钮无图片，程序绘制（与 btn_hint 同风格的蓝黄按钮）
-          if (td.key === 'freeze') {
-            this.drawFreezeButton(td.x, bottomY, btnSize, td.id);
+          // 时间静止无图片，程序绘制（与 btn_hint 同风格的蓝黄按钮）
+          if (td.img) {
+            this.drawImageButton(tx, bottomY, btnSize, btnSize, td.img, 'btn_' + td.key);
           } else {
-            this.drawImageButton(td.x, bottomY, btnSize, btnSize, td.img, td.id);
+            this.drawFreezeButton(tx, bottomY, btnSize, 'btn_' + td.key);
           }
           // 次数角标（右上角小圆，略微向左下偏移贴近按钮）
           ctx.save();
           ctx.beginPath();
-          ctx.arc(td.x + btnSize - 10, bottomY + 16, 13, 0, Math.PI * 2);
+          ctx.arc(tx + btnSize - 10, bottomY + 16, 13, 0, Math.PI * 2);
           ctx.fillStyle = count > 0 ? '#F5A623' : '#B0B0B0';
           ctx.fill();
           ctx.lineWidth = 2;
           ctx.strokeStyle = '#FFF';
           ctx.stroke();
-          this.drawText(String(count), td.x + btnSize - 10, bottomY + 17, 12, '#FFF', 'center', true);
+          this.drawText(String(count), tx + btnSize - 10, bottomY + 17, 12, '#FFF', 'center', true);
           ctx.restore();
         }
       }
@@ -1261,7 +1362,7 @@
       var winData = Main.winData;
       var lvCfg = GameGlobal.getLevelConfig(winData.levelId);
       var titleText = (winData.category === 'stack')
-        ? ('层层消消 · 第' + GameGlobal.getLevelDisplayNumber(winData.levelId) + '关 · ' + lvCfg.name)
+        ? ('层层消消 · ' + lvCfg.name)
         : (winData.category === 'special'
           ? ('特殊关卡 · 第' + GameGlobal.getLevelDisplayNumber(winData.levelId) + '关 · ' + lvCfg.name)
           : ('第' + GameGlobal.getLevelDisplayNumber(winData.levelId) + '关 · ' + lvCfg.name));

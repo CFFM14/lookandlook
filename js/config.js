@@ -494,13 +494,19 @@ GameGlobal.TOTAL_GIANT = GameGlobal.GIANT_LEVELS.length;
 GameGlobal.FUN_LEVELS = GameGlobal.SPECIAL_LEVELS.filter(function (l) { return (l.k || 1) !== 3; });
 GameGlobal.TOTAL_FUN = GameGlobal.FUN_LEVELS.length;
 
-// 堆叠关卡（层层消消）：在连连看基础上把“拐角限制”换成“层数限制”的新玩法，
-// 原型手填 3 关（id 2001+，与 1~24 普通关、25~1151 特殊关不冲突）。
-// 形状用 shape(depth) 生成：diamond=钻石/金字塔错落堆叠；flower=花瓣形。卡牌总数偶数（奇数自动剔除一张）。
+// 堆叠关卡（层层消消）：在连连看基础上把“拐角限制”换成“层数限制”的新玩法。
+// 【不做关卡解锁】只有 1 局「叠叠乐」：入口点一下直接开打，没有选关、没有锁。
+// 形状参数：shape=轮廓（flower 花苞 / diamond 钻石），depth=层数，baseR=底层半径（格），shrink=每层收缩（格）。
+// 卡牌总数由形状参数决定（奇数自动剔除一张）；卡片像素尺寸由 stackGame 按屏幕可用区自适应。
+// 每局随机：① 各层错落方向（4 条对角线随机取一）② 图案在槽位上的分配 → 轮廓不变、排布每局不同。
+// ⚠️ 号段：普通关 1~99、特殊关 1001~2127、叠叠乐 3001+。
+// 曾经用过 2001，但它落在特殊关号段内（getLevelConfig 先查特殊关）→ 整关配置被特殊关遮蔽，务必别再改回 2xxx。
 var STACK_HANDBOOK = [
-  { id: 2001, name: '层叠入门', shape: 'diamond', depth: 2, difficulty: 1, cardSet: 'fruit', _category: 'stack' },
-  { id: 2002, name: '三层叠塔', shape: 'diamond', depth: 3, difficulty: 2, cardSet: 'fruit', _category: 'stack' },
-  { id: 2003, name: '混合深叠', shape: 'flower',  depth: 4, difficulty: 3, cardSet: 'mixed', _category: 'stack' },
+  {
+    id: 3001, name: '叠叠乐', shape: 'flower', depth: 7, baseR: 4, shrink: 0.3,
+    cardSet: 'fruit', difficulty: 3, _category: 'stack',
+    hintEnabled: true, shuffleEnabled: true, // 叠层局给「提示」和「打乱」两个道具
+  },
 ];
 GameGlobal.STACK_LEVELS = STACK_HANDBOOK;
 GameGlobal.TOTAL_STACK = GameGlobal.STACK_LEVELS.length;
@@ -623,6 +629,7 @@ GameGlobal.getLevelHelp = function (cfg) {
     lines.push('层层消消：牌一层层叠起来，只能点最顶层（没被压住的）的牌。');
     lines.push('选中两张最顶层的同色牌即可消除，不要求路径连通——层，就是新的限制。');
     lines.push('层数越深越难：下层被压住，要先消掉上层才能动它。');
+    lines.push('每局牌堆都会重新随机（轮廓不变、排布必变），没有步数限制，清完一层算一层。');
   }
   if (cfg.mover) {
     lines.push('移动卡：棋盘上有张会来回移动的卡片，找到并消除它的同类即可。');
@@ -701,3 +708,62 @@ GameGlobal.SHOP_ITEMS = [
 /** 通关金币奖励：首次通关 100，重复通关 20 */
 GameGlobal.COINS_FIRST_CLEAR = 100;
 GameGlobal.COINS_REPEAT_CLEAR = 20;
+
+// ══════════════════════════════════════════════
+//  备战（出装）：每关最多携带 2 种道具，次数仍走库存
+// ══════════════════════════════════════════════
+
+/** 每局最多携带的道具「种类」数（次数不限量，但用一次扣一次库存） */
+GameGlobal.LOADOUT_MAX = 2;
+
+/**
+ * 道具元信息（备战页 / 关卡内道具栏共用）
+ * key=存档键；img=关卡内按钮图片（null 走程序绘制）；moverOnly=仅移动卡关可用
+ */
+GameGlobal.TOOL_META = [
+  { key: 'hint', name: '提示', icon: '💡', img: 'btn_hint', desc: '自动找出一对可消除的水果' },
+  { key: 'shuffle', name: '打乱', icon: '🔀', img: 'btn_shuffle', desc: '把剩余水果重新洗牌' },
+  { key: 'bomb', name: '炸弹', icon: '💣', img: 'btn_bomb', desc: '炸掉一片 3×3 区域' },
+  { key: 'freeze', name: '时间静止', icon: '❄', img: null, desc: '冻结移动卡 5 秒', moverOnly: true },
+];
+
+/** 预设套装（备战页一键套用）；moverOnly 的只在移动卡关出现 */
+GameGlobal.LOADOUT_PRESETS = [
+  { id: 'steady', name: '稳扎稳打', tools: ['hint', 'shuffle'], desc: '找不到就提示，卡死就洗牌' },
+  { id: 'boom', name: '爆破流', tools: ['bomb', 'hint'], desc: '炸弹开路，提示收尾' },
+  { id: 'chase', name: '追逃必备', tools: ['freeze', 'hint'], desc: '先冻住移动卡，再从容清盘', moverOnly: true },
+];
+
+/** 默认携带（新玩家 / 存档为空时） */
+GameGlobal.LOADOUT_DEFAULT = ['hint', 'shuffle'];
+
+/** 取道具元信息 */
+GameGlobal.getToolMeta = function (key) {
+  for (var i = 0; i < GameGlobal.TOOL_META.length; i++) {
+    if (GameGlobal.TOOL_META[i].key === key) return GameGlobal.TOOL_META[i];
+  }
+  return null;
+};
+
+/** 某关可选的道具 key 列表：关卡开关 + 时间静止仅限移动卡关 */
+GameGlobal.getAvailableTools = function (cfg) {
+  var out = [];
+  for (var i = 0; i < GameGlobal.TOOL_META.length; i++) {
+    var m = GameGlobal.TOOL_META[i];
+    if (m.key === 'freeze' && !(cfg && cfg.mover)) continue;      // 只有移动卡关能带
+    if (cfg && cfg[m.key + 'Enabled'] === false) continue;        // hintEnabled / shuffleEnabled / bombEnabled
+    out.push(m.key);
+  }
+  return out;
+};
+
+/** 本关实际携带：存档选择 ∩ 本关可用，去重并截断到 LOADOUT_MAX */
+GameGlobal.resolveLoadout = function (cfg, saved) {
+  var avail = GameGlobal.getAvailableTools(cfg);
+  var out = [];
+  var arr = saved || [];
+  for (var i = 0; i < arr.length && out.length < GameGlobal.LOADOUT_MAX; i++) {
+    if (avail.indexOf(arr[i]) >= 0 && out.indexOf(arr[i]) < 0) out.push(arr[i]);
+  }
+  return out;
+};

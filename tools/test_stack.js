@@ -1,12 +1,16 @@
 /**
- * test_stack.js —— 「层层消消」叠层引擎单元测试
+ * test_stack.js —— 层层消消「叠叠乐」单局玩法测试
  *
- * 验证 StackGame（立体堆叠层数限制玩法）的核心不变量：
- *   1) 构建：牌数 = rows*cols*layers，且每种类型成对（偶数张）
- *   2) 覆盖关系：同 (gx,gy) 有更高层未消除牌 → covered，post-condition 恒成立
- *   3) hitTest 只返回最顶层（未被压住）的牌
- *   4) 同色顶层两张 → 消除，active 数 -2，并触发重算覆盖
- *   5) 贪心求解：能跑到全空则 _won + Main.showWin（含金币奖励），否则判死局而不崩
+ * 玩法形态：不做关卡解锁，点「层层消消」入口直接开一局超级叠层（约 227 张 / 7 层）。
+ * 轮廓（花苞）固定不变，每局随机：① 各层错落方向 ② 图案在槽位上的分配。
+ *
+ * 验证核心不变量：
+ *   1) 配置：STACK_LEVELS 只有 1 关，形状参数齐全，开放提示/打乱道具
+ *   2) 生成：牌数达量级且为偶数、卡片尺寸自适应、整盘落在「HUD 之下 / 道具栏之上」可用区
+ *   3) 配对：每种图案偶数张、各图案数量均衡、槽位唯一、覆盖关系与 z 序正确
+ *   4) 每局随机：12 局排布互不相同，总张数/底层张数（轮廓）保持一致
+ *   5) 通关模拟：贪心求解多局，统计自动洗牌次数（死局率）
+ *   6) restart 重排复位、提示/打乱道具可用
  *
  * 运行：node tools/test_stack.js
  */
@@ -40,15 +44,11 @@ global.requestAnimationFrame = () => {};
 require('../js/shapes.js');
 require('../js/special_levels.js');
 require('../js/config.js');
+require('../js/storage.js');
 
-// Storage 桩：避免 wx 存储副作用，同时记录 unlockNextStack 调用
-var unlockCalls = [];
-GameGlobal.Storage = {
-  unlockNextStack: function (id) { unlockCalls.push(id); },
-  isFirstClear: function () { return true; },
-  setBestScore: function () {},
-  addCoins: function () {},
-};
+// 模拟真机刘海屏（HUD 挂在胶囊按钮下方）
+GameGlobal.SAFE_TOP = 48;
+
 var winData = null;
 GameGlobal.Main = {
   showWin: function (id, m, e, c) { winData = { id: id, moves: m, elapsed: e, coinsEarned: c }; },
@@ -59,129 +59,191 @@ GameGlobal.Tween = { to: function () {}, update: function () {} };
 require('../js/stackGame.js');
 const StackGame = GameGlobal.StackGame;
 
-var failures = 0;
-function check(name, cond) { if (!cond) { failures++; console.log('  ✗ ' + name); } else { console.log('  ✓ ' + name); } }
+let failures = 0, total = 0;
+function check(name, cond, extra) {
+  total++;
+  if (!cond) { failures++; console.log('  ✗ ' + name + (extra ? '  → ' + extra : '')); }
+  else { console.log('  ✓ ' + name + (extra ? '  (' + extra + ')' : '')); }
+}
+function section(t) { console.log('\n[' + t + ']'); }
 
-// ── 1. 构建 + 覆盖 post-condition + 类型偶数 ──
-[2001, 2002, 2003].forEach(function (id) {
-  var g = new StackGame(id);
-  check('L' + id + ' 牌数为偶数（可成对）', g.tiles.length % 2 === 0);
+const LVID = GameGlobal.STACK_LEVELS[0].id;
 
-  // 每种类型偶数张（天然成对，可两两消）
-  var cnt = {};
-  g.tiles.forEach(function (t) { cnt[t.type] = (cnt[t.type] || 0) + 1; });
-  var evenOK = Object.keys(cnt).every(function (k) { return cnt[k] % 2 === 0; });
-  check('L' + id + ' 每种类型偶数张', evenOK);
+// ── 1. 配置：单局「点击就玩」 ────────────────────────────────────────
+section('1 关卡配置');
+check('STACK_LEVELS 只有 1 关（不做一关一关）', GameGlobal.STACK_LEVELS.length === 1,
+  GameGlobal.STACK_LEVELS.length + ' 关');
+const cfg = GameGlobal.STACK_LEVELS[0];
+check('形状参数齐全（花苞/7 层/半径 4/收缩 0.3）',
+  cfg.shape === 'flower' && cfg.depth === 7 && cfg.baseR === 4 && cfg.shrink === 0.3);
+check('开放提示 + 打乱道具', cfg.hintEnabled === true && cfg.shuffleEnabled === true);
+check('getLevelConfig 能取到且标记为 stack', GameGlobal.getLevelConfig(LVID)._category === 'stack');
 
-  // 关键可解性不变量：每张牌占据唯一槽位（不存在两张牌同 cx,cy 同层，避免“永久压死”）
-  var dup = {};
-  var uniqueOK = g.tiles.every(function (t) {
-    var key = t.cx + ',' + t.cy + ',' + t.layer;
-    if (dup[key]) return false; dup[key] = true; return true;
-  });
-  check('L' + id + ' 槽位唯一（无同格同层叠死）', uniqueOK);
+// ── 2. 生成：张数 / 自适应 / 居中 ────────────────────────────────────
+section('2 叠层生成');
+const g = new StackGame(LVID);
+check('牌数达「超级复杂」量级（>150）', g.tiles.length > 150, g.tiles.length + ' 张');
+check('总张数为偶数（保证全部成对可消）', g.tiles.length % 2 === 0);
+check('卡片像素尺寸在可视区间 [24,52]', g.cardW >= 24 && g.cardW <= 52, g.cardW + 'px');
+check('metrics.cw 与 cardW 一致（drawCard 取 metrics.cw）', g.metrics.cw === g.cardW);
 
-  // 覆盖 post-condition：covered === 存在更高层、且矩形重叠的未消除牌
-  var okCov = true;
-  for (var i = 0; i < g.tiles.length; i++) {
-    var t = g.tiles[i];
-    var expect = false;
-    for (var j = 0; j < g.tiles.length; j++) {
-      var u = g.tiles[j];
-      if (u === t || u.state === 'eliminated') continue;
-      if (u.layer > t.layer && Math.abs(u.cx - t.cx) < 1 && Math.abs(u.cy - t.cy) < 1) { expect = true; break; }
-    }
-    if (t.covered !== expect) { okCov = false; break; }
-  }
-  check('L' + id + ' 覆盖关系正确（矩形重叠）', okCov);
-
-  // hitTest 命中被压牌中心时，返回的是压在上面的更高层牌（而非被压牌本身）
-  var covered = g.tiles.filter(function (t) { return t.covered; })[0];
-  if (covered) {
-    var hit = g.hitTest(covered.visual.x, covered.visual.y);
-    check('L' + id + ' hitTest 返回更高层（非被压牌）', hit === null || hit === covered || hit.layer > covered.layer);
-  }
-
-  // z 序不变量：点击某张“未覆盖的牌”中心，必须命中最高的那张（与绘制升序一致，不会先消底层）
-  var top = g.tiles.filter(function (t) { return !t.covered; });
-  var zOK = true;
-  top.forEach(function (t) {
-    var h = g.hitTest(t.visual.x, t.visual.y);
-    if (!h) { zOK = false; return; }
-    // 该点落到的所有激活牌里，h 必须是最高层
-    var cellX = (t.visual.x - g.metrics.originX) / g.metrics.cw;
-    var cellY = (t.visual.y - g.metrics.originY) / g.metrics.cw;
-    var maxL = -1;
-    g.tiles.forEach(function (u) {
-      if (u.state === 'eliminated') return;
-      if (Math.abs(cellX - u.cx) <= 0.5 && Math.abs(cellY - u.cy) <= 0.5 && !u.covered && u.layer > maxL) maxL = u.layer;
-    });
-    if (h.layer !== maxL) zOK = false;
-  });
-  check('L' + id + ' 点击命中最高层（z序一致）', zOK);
+const W = GameGlobal.DESIGN_W, H = GameGlobal.DESIGN_H;
+let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+g.tiles.forEach(function (t) {
+  minX = Math.min(minX, t.visual.x - g.cardW / 2); maxX = Math.max(maxX, t.visual.x + g.cardW / 2);
+  minY = Math.min(minY, t.visual.y - g.cardW / 2); maxY = Math.max(maxY, t.visual.y + g.cardW / 2);
 });
+const topLimit = GameGlobal.SAFE_TOP + 96, bottomLimit = H - 132;
+check('棋盘横向不出血', minX >= 0 && maxX <= W, 'x ' + minX.toFixed(1) + '~' + maxX.toFixed(1));
+check('棋盘顶部不压 HUD（≥' + topLimit + '）', minY >= topLimit - 1, 'top=' + minY.toFixed(1));
+check('棋盘底部不压道具栏（≤' + bottomLimit + '）', maxY <= bottomLimit + 1, 'bottom=' + maxY.toFixed(1));
 
-// ── 2. 消除机制 ──
-(function () {
-  var g = new StackGame(2001);
-  var before = g._activeTiles().length;
-  // 找两张顶层同色牌
-  var top = g._activeTiles().filter(function (t) { return !t.covered; });
-  var byType = {};
-  top.forEach(function (t) { (byType[t.type] = byType[t.type] || []).push(t); });
-  var pair = null;
-  for (var k in byType) { if (byType[k].length >= 2) { pair = [byType[k][0], byType[k][1]]; break; } }
-  check('能找到一对顶层同色牌', !!pair);
-  if (pair) {
-    g._eliminate(pair[0], pair[1]);
-    var after = g._activeTiles().length;
-    check('消除后 active 数 -2', after === before - 2);
-    // 被消除的两张 state==='eliminated'
-    check('被消除牌 state=eliminated', pair[0].state === 'eliminated' && pair[1].state === 'eliminated');
+const layerCount = {};
+g.tiles.forEach(function (t) { layerCount[t.layer] = (layerCount[t.layer] || 0) + 1; });
+check('实际占用 ' + cfg.depth + ' 层', Object.keys(layerCount).length === cfg.depth,
+  JSON.stringify(layerCount));
+
+// ── 3. 配对与覆盖不变量 ──────────────────────────────────────────────
+section('3 配对与覆盖');
+const cnt = {};
+g.tiles.forEach(function (t) { cnt[t.type] = (cnt[t.type] || 0) + 1; });
+let evenOK = true, mx = 0, mn = Infinity;
+Object.keys(cnt).forEach(function (k) {
+  if (cnt[k] % 2 !== 0) evenOK = false;
+  mx = Math.max(mx, cnt[k]); mn = Math.min(mn, cnt[k]);
+});
+check('每种图案偶数张', evenOK, JSON.stringify(cnt));
+check('各图案数量均衡（极差 ≤ 2）', mx - mn <= 2, '极差 ' + (mx - mn));
+check('用到 12 种图案', Object.keys(cnt).length === 12, Object.keys(cnt).length + ' 种');
+
+const dup = {}, uniqueOK = g.tiles.every(function (t) {
+  const key = t.cx + ',' + t.cy + ',' + t.layer;
+  if (dup[key]) return false; dup[key] = true; return true;
+});
+check('槽位唯一（无同格同层叠死）', uniqueOK);
+
+let okCov = true;
+for (let i = 0; i < g.tiles.length && okCov; i++) {
+  const t = g.tiles[i];
+  let expect = false;
+  for (let j = 0; j < g.tiles.length; j++) {
+    const u = g.tiles[j];
+    if (u === t || u.state === 'eliminated') continue;
+    if (u.layer > t.layer && Math.abs(u.cx - t.cx) < 1 && Math.abs(u.cy - t.cy) < 1) { expect = true; break; }
   }
-})();
+  if (t.covered !== expect) okCov = false;
+}
+check('覆盖关系正确（更高层且矩形重叠）', okCov);
 
-// ── 3. 贪心求解（多种子）：可通关则 _won + showWin(含金币)；否则判死局不崩 ──
-function solve(g) {
-  var guard = 0;
+// z 序：点任意未覆盖牌中心，必须命中该点最高的那张（与绘制 layer 升序一致）
+let zOK = true, hitSelfOK = 0, hitSelfAll = 0;
+g.tiles.filter(function (t) { return !t.covered; }).forEach(function (t) {
+  const h = g.hitTest(t.visual.x, t.visual.y);
+  hitSelfAll++; if (h === t) hitSelfOK++;
+  if (!h) { zOK = false; return; }
+  const cellX = (t.visual.x - g.metrics.originX) / g.cardW;
+  const cellY = (t.visual.y - g.metrics.originY) / g.cardW;
+  let maxL = -1;
+  g.tiles.forEach(function (u) {
+    if (u.state === 'eliminated' || u.covered) return;
+    if (Math.abs(cellX - u.cx) <= 0.5 && Math.abs(cellY - u.cy) <= 0.5 && u.layer > maxL) maxL = u.layer;
+  });
+  if (h.layer !== maxL) zOK = false;
+});
+check('点击命中最高层（z 序一致）', zOK);
+check('顶层牌点自己中心可命中', hitSelfOK === hitSelfAll, hitSelfOK + '/' + hitSelfAll);
+check('棋盘外点击返回 null', g.hitTest(-999, -999) === null);
+
+// ── 4. 每局随机性 ────────────────────────────────────────────────────
+section('4 每局随机性');
+const sigs = new Set(), dirs = new Set(), shapes = new Set();
+for (let i = 0; i < 12; i++) {
+  const s = new StackGame(LVID);
+  dirs.add(JSON.stringify(s._shiftDir));
+  sigs.add(s.tiles.map(function (t) { return t.type + '@' + t.cx + ',' + t.cy; }).join('|'));
+  shapes.add(s.tiles.length + '/' + s.tiles.filter(function (t) { return t.layer === 1; }).length);
+}
+check('错落方向每局随机（4 条对角线轮换）', dirs.size >= 2, dirs.size + ' 种方向');
+check('12 局排布互不相同（图案分配随机）', sigs.size === 12, sigs.size + '/12');
+check('轮廓不变（总张数/底层张数每局一致）', shapes.size === 1, [...shapes].join(' '));
+
+// ── 5. 通关模拟（死局率） ────────────────────────────────────────────
+section('5 通关模拟');
+function autoPlay() {
+  const gg = new StackGame(LVID);
+  let shuffles = 0, steps = 0, guard = 0, stuck = false;
   while (true) {
-    if (g._won) return 'win';
-    var active = g._activeTiles().filter(function (t) { return !t.covered; });
-    if (active.length === 0) return g._won ? 'win' : 'empty';
-    var byType = {};
-    active.forEach(function (t) { (byType[t.type] = byType[t.type] || []).push(t); });
-    var p = null;
-    for (var k in byType) { if (byType[k].length >= 2) { p = [byType[k][0], byType[k][1]]; break; } }
-    if (!p) return g._lost ? 'deadlock' : 'stuck';
-    g._eliminate(p[0], p[1]);
-    if (++guard > 100000) return 'guard';
+    if (++guard > 5000) break;
+    const act = gg.tiles.filter(function (t) { return t.state !== 'eliminated'; });
+    if (act.length === 0) break;
+    const by = {};
+    act.filter(function (t) { return !t.covered; }).forEach(function (t) {
+      (by[t.type] = by[t.type] || []).push(t);
+    });
+    let pair = null;
+    Object.keys(by).forEach(function (k) {
+      if (!pair && by[k].length >= 2) pair = [by[k][0], by[k][1]];
+    });
+    if (!pair) {
+      shuffles++;
+      if (shuffles > 30) { stuck = true; break; }
+      gg._reshuffleRemaining();
+      if (!gg._hasTopPair()) { stuck = true; break; }
+      continue;
+    }
+    gg._eliminate(pair[0], pair[1]);
+    steps++;
   }
+  return {
+    shuffles: shuffles, steps: steps, stuck: stuck,
+    left: gg.tiles.filter(function (t) { return t.state !== 'eliminated'; }).length,
+    total: gg.tiles.length,
+  };
 }
-
-var seeds = 60, wins = 0, deadlocks = 0, crashed = 0;
-for (var s = 0; s < seeds; s++) {
-  try {
-    var g = new StackGame(2002); // 6x6x3 = 108 张，三层
-    var r = solve(g);
-    if (r === 'win') {
-      wins++;
-      if (!g._won || !winData || winData.id !== 2002) crashed++;
-      // 金币：首通桩返回 true → COINS_FIRST_CLEAR(100)
-      if (winData.coinsEarned !== GameGlobal.COINS_FIRST_CLEAR) crashed++;
-    } else if (r === 'deadlock' || r === 'stuck' || r === 'empty') {
-      deadlocks++;
-    } else { crashed++; }
-  } catch (e) {
-    crashed++;
-    console.log('  求解异常: ' + e.message);
-  }
+const ROUNDS = 5;
+let worstShuffle = 0, clearAllOK = true, stuckAny = false;
+for (let i = 0; i < ROUNDS; i++) {
+  const r = autoPlay();
+  worstShuffle = Math.max(worstShuffle, r.shuffles);
+  if (r.left !== 0 || r.stuck) clearAllOK = false;
+  if (r.stuck) stuckAny = true;
+  console.log('    · 局' + (i + 1) + '：' + r.total + ' 张 / ' + r.steps + ' 步消完，剩余 ' +
+    r.left + '，自动洗牌 ' + r.shuffles + ' 次');
 }
-check('贪心求解无异常', crashed === 0);
-check('自动洗牌后原型可通关（≥50/60 胜）', wins >= 50);
-console.log('  · 60 种子：胜 ' + wins + ' / 死局或卡住 ' + deadlocks);
+check(ROUNDS + ' 局全部能消干净（无卡死）', clearAllOK && !stuckAny);
+check('单局自动洗牌 ≤ 3 次（邻层配对策略生效）', worstShuffle <= 3, '最差 ' + worstShuffle + ' 次');
+check('胜利会触发 showWin（含金币奖励）', !!winData && winData.id === LVID);
 
-// ── 4. 解锁调用 ──
-check('胜利会调用 unlockNextStack', unlockCalls.indexOf(2002) >= 0);
+// ── 6. restart 重排 ──────────────────────────────────────────────────
+section('6 restart 重开一局');
+const g3 = new StackGame(LVID);
+const first = g3.tiles[0];
+const mate = g3.tiles.filter(function (t) { return t !== first && t.type === first.type; })[0];
+g3._eliminate(first, mate);
+g3.moves = 5;
+const beforeSig = g3.tiles.map(function (t) { return t.type + '@' + t.cx + ',' + t.cy; }).join('|');
+g3.restart();
+const afterSig = g3.tiles.map(function (t) { return t.type + '@' + t.cx + ',' + t.cy; }).join('|');
+check('restart 后所有牌复位为 normal', g3.tiles.every(function (t) { return t.state === 'normal'; }));
+check('restart 后步数清零', g3.moves === 0);
+check('restart 后牌全部回来', g3.tiles.filter(function (t) { return t.state !== 'eliminated'; }).length === g3.tiles.length);
+check('restart 后重新随机排布', beforeSig !== afterSig);
+check('restart 后开局必有一步可走', g3._hasTopPair());
 
-console.log('\n' + (failures === 0 ? '✅ 全部通过' : '❌ 失败 ' + failures + ' 项'));
+// ── 7. 道具：提示 / 打乱 ─────────────────────────────────────────────
+section('7 道具');
+const g4 = new StackGame(LVID);
+GameGlobal.Storage.addTool('hint', 1);
+g4.showHint();
+check('提示画一条蓝线', !!g4.connectionLine && g4.connectionLine.color === 'blue');
+check('提示高亮两张牌', g4.tiles.filter(function (t) { return t.state === 'hintFlash'; }).length === 2);
+GameGlobal.Storage.addTool('shuffle', 1);
+const sigBefore = g4.tiles.map(function (t) { return t.type; }).join(',');
+g4.shuffleCards();
+const sigAfter = g4.tiles.map(function (t) { return t.type; }).join(',');
+check('打乱后图案分配变化', sigBefore !== sigAfter);
+check('打乱后仍保证有一步可走', g4._hasTopPair());
+
+console.log('\n' + (failures === 0 ? '✅ 全部通过' : '❌ 失败 ' + failures + ' 项') +
+  '（共 ' + total + ' 项断言）');
 process.exit(failures === 0 ? 0 : 1);

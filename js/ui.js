@@ -48,8 +48,109 @@
       Main.game = null;
     },
 
-    /** 进入某关（普通 / 特殊 共用；按配置 _category 自动判定解锁与“返回”去向） */
+    /**
+     * 进入某关的入口：先弹「备战」页选道具（每关最多带 2 种），确认后才真正开局。
+     * 层层消消（StackGame 不支持道具）或本关没有任何可用道具时，直接开局不弹备战。
+     */
     startLevel: function (levelId) {
+      var cfg = GameGlobal.getLevelConfig(levelId);
+      var category = (cfg && cfg._category) || 'normal';
+      if (category !== 'stack' && GameGlobal.getAvailableTools(cfg).length > 0) {
+        UI.openLoadout(levelId);
+        return;
+      }
+      UI.beginLevel(levelId);
+    },
+
+    /** 打开备战页：按本关可用性过滤上次的选择，得到初始携带 */
+    openLoadout: function (levelId) {
+      var cfg = GameGlobal.getLevelConfig(levelId);
+      Main.pendingLevelId = levelId;
+      Main.game = null;
+      var picked = GameGlobal.resolveLoadout(cfg, GameGlobal.Storage.getLoadout());
+      // 上次的选择在本关一个都不可用（例如只带了「时间静止」，本关没移动卡）→ 自动补满
+      if (!picked.length) {
+        var avail = GameGlobal.getAvailableTools(cfg);
+        for (var i = 0; i < avail.length && picked.length < GameGlobal.LOADOUT_MAX; i++) picked.push(avail[i]);
+      }
+      Main.loadout = picked;
+      Main.page = 'loadout';
+    },
+
+    /** 备战页当前关卡可选的道具 key 列表 */
+    availTools: function () {
+      if (Main.pendingLevelId == null) return [];
+      return GameGlobal.getAvailableTools(GameGlobal.getLevelConfig(Main.pendingLevelId));
+    },
+
+    /** 备战页：点某个道具卡 → 选中/取消；超过上限挤掉最早选的那个 */
+    toggleLoadoutTool: function (key) {
+      if (UI.availTools().indexOf(key) < 0) {
+        var m = GameGlobal.getToolMeta(key);
+        Main.showToast(m && m.moverOnly ? '时间静止只在移动卡关可用' : '本关不可用这个道具');
+        return;
+      }
+      var cur = (Main.loadout || []).slice();
+      var at = cur.indexOf(key);
+      if (at >= 0) {
+        cur.splice(at, 1);
+      } else {
+        if (cur.length >= GameGlobal.LOADOUT_MAX) {
+          var dropped = cur.shift();
+          var dm = GameGlobal.getToolMeta(dropped);
+          Main.showToast('已换下「' + (dm ? dm.name : dropped) + '」');
+        }
+        cur.push(key);
+      }
+      Main.loadout = cur;
+    },
+
+    /** 备战页：一键套用预设套装（套装里本关不可用的道具自动跳过） */
+    applyPreset: function (presetId) {
+      var list = GameGlobal.LOADOUT_PRESETS || [];
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id !== presetId) continue;
+        var avail = UI.availTools();
+        var out = [];
+        for (var j = 0; j < list[i].tools.length && out.length < GameGlobal.LOADOUT_MAX; j++) {
+          if (avail.indexOf(list[i].tools[j]) >= 0) out.push(list[i].tools[j]);
+        }
+        Main.loadout = out;
+        Main.showToast('已选择「' + list[i].name + '」');
+        return;
+      }
+    },
+
+    /** 关卡内道具按钮守卫：只响应本关已携带的道具 */
+    toolCarried: function (key) {
+      var lo = Main.loadout;
+      if (!lo || !lo.length) return true; // 未设置（老存档/测试）→ 不拦截
+      return lo.indexOf(key) >= 0;
+    },
+
+    /** 从备战页 / 游戏内返回：按 Main.gameFrom 回到来源页 */
+    exitLevel: function () {
+      Main.pendingLevelId = null;
+      if (Main.gameFrom === 'menu') UI.showMenu();
+      else if (Main.gameFrom === 'giant') {
+        Main.specialSub = 'giant';
+        Main.page = 'specials';
+        Main.levelCategory = 'special';
+        Main.game = null;
+      } else if (Main.gameFrom === 'fun') {
+        Main.specialSub = 'fun';
+        Main.page = 'specials';
+        Main.levelCategory = 'special';
+        Main.game = null;
+      } else if (Main.gameFrom === 'stack') {
+        // 层层消消是单局玩法（没有选关页）→ 直接回玩法 hub
+        UI.showSpecialHub();
+      } else if (Main.gameFrom === 'special') UI.showSpecialHub();
+      else UI.showLevelSelect();
+    },
+
+    /** 真正开局（备战确认后 / 无需备战的关卡直接走这里） */
+    beginLevel: function (levelId) {
       var cfg = GameGlobal.getLevelConfig(levelId);
       var category = (cfg && cfg._category) || 'normal';
       if (category === 'stack') {
@@ -76,6 +177,9 @@
         }
         // gameFrom 由调用方设置（menu_start→'menu'，选关卡片→'levels'），此处不再覆盖
       }
+      // 本关实际携带的道具（存档选择 ∩ 本关可用），关卡内道具栏按它渲染
+      Main.loadout = GameGlobal.resolveLoadout(cfg, GameGlobal.Storage.getLoadout());
+      Main.pendingLevelId = null;
       Main.game = (category === 'stack') ? new GameGlobal.StackGame(levelId) : new GameGlobal.Game(levelId);
       Main.page = 'game';
       Main.winData = null;
@@ -207,6 +311,15 @@
         }
         return;
       }
+      // 备战页：道具卡 / 预设套装
+      if (id.indexOf('lo_tool_') === 0) {
+        UI.toggleLoadoutTool(id.slice(8));
+        return;
+      }
+      if (id.indexOf('lo_preset_') === 0) {
+        UI.applyPreset(id.slice(10));
+        return;
+      }
       switch (id) {
         case 'menu_start':
           // 从最新解锁的关卡开始（首次为第 1 关）
@@ -244,11 +357,9 @@
           Main.specialPageAnim = 0;
           break;
         case 'specials_stack':
-          // 进入“层层消消”选关界面（立体堆叠层数限制玩法）
-          Main.page = 'stacks';
-          Main.levelCategory = 'stack';
-          Main.stackPage = 0;
-          Main.stackPageAnim = 0;
+          // 层层消消 = 点击就玩：不再进选关页，直接开一局（每局图案排布随机重排）
+          Main.gameFrom = 'stack';
+          UI.startLevel(GameGlobal.STACK_LEVELS[0].id);
           break;
         case 'hub_back':
           UI.showMenu();
@@ -290,26 +401,16 @@
           // 游戏内返回：主界面“开始游戏”进的 → 回主界面；选关界面进的 → 回选关界面
           Main.helpPopupOpen = false; // 离开关卡时关闭玩法说明弹窗
           Main.pendingHelp = false;   // 一并清理：中途离场则不弹待弹说明
-          if (Main.gameFrom === 'menu') UI.showMenu();
-          else if (Main.gameFrom === 'giant') {
-            // 从巨物关卡进的 → 回到巨物关卡选关界面
-            Main.specialSub = 'giant';
-            Main.page = 'specials';
-            Main.levelCategory = 'special';
-            Main.game = null;
-          } else if (Main.gameFrom === 'fun') {
-            // 从趣味关卡进的 → 回到趣味关卡选关界面
-            Main.specialSub = 'fun';
-            Main.page = 'specials';
-            Main.levelCategory = 'special';
-            Main.game = null;
-          } else if (Main.gameFrom === 'stack') {
-            // 从层层消消进的 → 回到层层消消选关界面
-            Main.page = 'stacks';
-            Main.levelCategory = 'stack';
-            Main.game = null;
-          } else if (Main.gameFrom === 'special') UI.showSpecialHub();
-          else UI.showLevelSelect();
+          UI.exitLevel();
+          break;
+        // ── 备战页（进关前选道具）──
+        case 'lo_back':
+          UI.exitLevel(); // 取消进关 → 回来源页
+          break;
+        case 'lo_start':
+          if (Main.pendingLevelId == null) { UI.showMenu(); break; }
+          GameGlobal.Storage.setLoadout(Main.loadout || []); // 记住选择，下次默认沿用
+          UI.beginLevel(Main.pendingLevelId);
           break;
         case 'lose_retry':
           if (Main.game) Main.game.restart();
@@ -328,13 +429,9 @@
         case 'win_next':
           if (Main.winData) {
             if (Main.winData.category === 'stack') {
-              // 层层消消：在 STACK_LEVELS 内顺序连关
-              var stidx = GameGlobal.getStackIndex(Main.winData.levelId);
-              if (stidx >= 0 && stidx < GameGlobal.STACK_LEVELS.length - 1) {
-                UI.startLevel(GameGlobal.STACK_LEVELS[stidx + 1].id);
-              } else {
-                UI.showSpecialHub(); // 层层消消最后一关 → 回 hub
-              }
+              // 叠叠乐是单局玩法：没有下一关，「下一关」即「再来一局（重新随机排布）」
+              if (Main.game) Main.game.restart();
+              Main.page = 'game';
             } else if (Main.winData.category === 'special') {
               if (Main.gameFrom === 'giant') {
                 // 巨物关卡：在 GIANT_LEVELS 内顺序连关
@@ -410,10 +507,11 @@
           if (Main.page === 'game' && Main.game) {
             var g = Main.game;
             switch (id) {
-              case 'btn_hint': g.showHint(); break;
-              case 'btn_shuffle': g.shuffleCards(); break;
-              case 'btn_bomb': g.useBomb(); break;
-              case 'btn_freeze': g.useFreeze(); break;
+              // 只响应本关携带的道具（未携带的按钮本就不会绘制，这里是双保险）
+              case 'btn_hint': if (UI.toolCarried('hint')) g.showHint(); break;
+              case 'btn_shuffle': if (UI.toolCarried('shuffle')) g.shuffleCards(); break;
+              case 'btn_bomb': if (UI.toolCarried('bomb')) g.useBomb(); break;
+              case 'btn_freeze': if (UI.toolCarried('freeze')) g.useFreeze(); break;
             }
           }
           break;
